@@ -1,5 +1,6 @@
 #computer_settings.py
 import json
+import os
 import re
 import sys
 import time
@@ -416,6 +417,42 @@ def open_run():
     if _OS == "Windows":
         pyautogui.hotkey("win", "r")
 
+def _linux_toggle_dark_mode() -> str:
+    """Toggle light/dark theme on Linux (Cinnamon / GNOME aware)."""
+    de = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
+
+    def _gs(schema, key, *value):
+        cmd = ["gsettings"]
+        cmd += ["set", schema, key, value[0]] if value else ["get", schema, key]
+        return subprocess.run(cmd, capture_output=True, text=True)
+
+    try:
+        # 1) Modern color-scheme key (Cinnamon 6 / GNOME 42+)
+        for schema in ("org.cinnamon.desktop.interface", "org.gnome.desktop.interface"):
+            r = _gs(schema, "color-scheme")
+            if r.returncode == 0:
+                cur = r.stdout.strip().strip("'\"")
+                new = "default" if "dark" in cur else "prefer-dark"
+                _gs(schema, "color-scheme", new)
+                return f"Dark mode toggled via {schema} color-scheme."
+
+        # 2) Fall back to toggling the GTK theme name
+        #    (Mint-Y <-> Mint-Y-Dark, Adwaita <-> Adwaita-dark)
+        schema = ("org.cinnamon.desktop.interface" if "cinnamon" in de
+                  else "org.gnome.desktop.interface")
+        r = _gs(schema, "gtk-theme")
+        if r.returncode == 0 and r.stdout.strip():
+            theme = r.stdout.strip().strip("'\"")
+            low = theme.lower()
+            new_theme = (low.replace("-dark", "").replace("_dark", "")
+                         if "dark" in low else f"{theme}-dark")
+            _gs(schema, "gtk-theme", new_theme)
+            return f"Dark mode toggled: {theme} -> {new_theme}."
+        return "Could not find a theme backend to toggle dark mode."
+    except Exception as e:
+        return f"Dark mode toggle failed: {e}"
+
+
 def dark_mode():
     if _OS == "Darwin":
         subprocess.run(["osascript", "-e",
@@ -434,19 +471,7 @@ def dark_mode():
         except Exception as e:
             print(f"[Settings] dark_mode registry failed: {e}")
     else:
-        try:
-            result = subprocess.run(
-                ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
-                capture_output=True, text=True
-            )
-            current = result.stdout.strip()
-            new_scheme = "'default'" if "dark" in current else "'prefer-dark'"
-            subprocess.run(
-                ["gsettings", "set", "org.gnome.desktop.interface", "color-scheme", new_scheme],
-                capture_output=True
-            )
-        except Exception as e:
-            print(f"[Settings] dark_mode Linux failed: {e}")
+        return _linux_toggle_dark_mode()
 
 def toggle_wifi():
     if _OS == "Darwin":
