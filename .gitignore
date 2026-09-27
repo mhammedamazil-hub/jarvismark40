@@ -30,7 +30,3 @@ desktop.ini
 # ---- Logs & temp ----
 *.log
 Git.log
-
-# ---- Optional local assets ----
-# face.png is generated/downloaded per-machine; drop your own in the repo root.
-face.png
