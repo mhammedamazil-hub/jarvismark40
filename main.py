@@ -3,6 +3,7 @@ import threading
 import json
 import sys
 import traceback
+import re
 from pathlib import Path
 
 import sounddevice as sd
@@ -13,6 +14,7 @@ from memory.memory_manager import (
     load_memory, update_memory, format_memory_for_prompt,
     should_extract_memory, extract_memory
 )
+from config.settings import is_serious, set_serious, compose_persona, SERIOUS_PERSONA
 
 from actions.file_processor import file_processor
 from actions.flight_finder     import flight_finder
@@ -119,6 +121,23 @@ TOOL_DECLARATIONS = [
                 "aspect": {"type": "STRING", "description": "price | specs | reviews"}
             },
             "required": ["query"]
+        }
+    },
+    {
+        "name": "deep_research",
+        "description": (
+            "Autonomous deep research on a topic: run multiple web-search passes "
+            "(breadth then gap-filling follow-ups), synthesize a comprehensive report, "
+            "and save it as a Markdown file on the Desktop. Use when the user wants "
+            "thorough, well-researched information (research X, deep dive on Y)."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "topic": {"type": "STRING", "description": "The subject to research"},
+                "max_rounds": {"type": "INTEGER", "description": "Max research passes (default 4)"}
+            },
+            "required": ["topic"]
         }
     },
     {
@@ -505,6 +524,31 @@ class JarvisLive:
         self.ui.on_text_command = self._on_text_command
 
     def _on_text_command(self, text: str):
+        t   = (text or "").strip()
+        low = t.lower()
+
+        # ---- serious mode toggle ----
+        if low in ("serious mode on", "go serious", "serious mode",
+                   "enable serious mode", "lock in", "mission mode"):
+            set_serious(True)
+            self.ui.write_log("SYS: Serious mode ON.")
+            self._inject_persona(SERIOUS_PERSONA)
+            self.speak("Serious mode engaged, sir.")
+            return
+        if low in ("serious mode off", "normal mode", "stand down",
+                   "casual mode", "disable serious mode"):
+            set_serious(False)
+            self.ui.write_log("SYS: Serious mode off.")
+            self._inject_persona("Return to your normal JARVIS persona: calm, sharp, professional.")
+            self.speak("Standing down to normal, sir.")
+            return
+
+        # ---- deep research trigger ("research X" / "deep research on X") ----
+        m = re.match(r"^(?:deep\s+)?research\s+(?:on\s+|about\s+)?(.+)$", t, re.IGNORECASE)
+        if m and len(m.group(1).strip()) > 2:
+            self._start_deep_research(m.group(1).strip())
+            return
+
         if not self._loop or not self.session:
             return
         asyncio.run_coroutine_threadsafe(
@@ -514,6 +558,39 @@ class JarvisLive:
             ),
             self._loop
         )
+
+    def _inject_persona(self, instruction: str):
+        """Push an in-session persona update without reconnecting."""
+        if not self._loop or not self.session:
+            return
+        asyncio.run_coroutine_threadsafe(
+            self.session.send_client_content(
+                turns={"parts": [{"text": instruction}]},
+                turn_complete=True
+            ),
+            self._loop
+        )
+
+    def _start_deep_research(self, topic: str):
+        self.ui.write_log(f"SYS: Deep research initiated — {topic}")
+        self.ui.set_state("THINKING")
+
+        def _run():
+            try:
+                from actions.research import deep_research
+                msg = deep_research(
+                    topic, speak=self.speak,
+                    progress=lambda s: self.ui.write_log(f"SYS: {s}")
+                )
+                self.ui.write_log(f"Jarvis: {msg}")
+            except Exception as e:
+                self.ui.write_log(f"ERR: deep_research — {e}")
+                self.speak(f"Research hit a problem, sir. {e}")
+            finally:
+                if not self.ui.muted:
+                    self.ui.set_state("LISTENING")
+
+        threading.Thread(target=_run, daemon=True).start()
 
     def set_speaking(self, value: bool):
         with self._speaking_lock:
@@ -544,7 +621,7 @@ class JarvisLive:
 
         memory     = load_memory()
         mem_str    = format_memory_for_prompt(memory)
-        sys_prompt = _load_system_prompt()
+        sys_prompt = compose_persona(_load_system_prompt(), is_serious())
 
         now      = datetime.now()
         time_str = now.strftime("%A, %B %d, %Y — %I:%M %p")
@@ -683,6 +760,12 @@ class JarvisLive:
             elif name == "flight_finder":
                 r = await loop.run_in_executor(None, lambda: flight_finder(parameters=args, player=self.ui))
                 result = r or "Done."
+
+            elif name == "deep_research":
+                from actions.research import deep_research_tool
+                r = await loop.run_in_executor(None, lambda: deep_research_tool(args, speak=self.speak, player=self.ui))
+                result = r or "Research complete."
+
             elif name == "shutdown_jarvis":
                 self.ui.write_log("SYS: Shutdown requested.")
                 self.speak("Goodbye, sir.")
