@@ -23,7 +23,8 @@ from actions.weather_report    import weather_action
 from actions.send_message      import send_message
 from actions.reminder          import reminder
 from actions.computer_settings import computer_settings
-from actions.screen_processor  import screen_process
+from actions.screen_processor  import (screen_process, start_camera_stream,
+                                        stop_camera_stream, camera_look)
 from actions.youtube_video     import youtube_video
 from actions.desktop           import desktop_control
 from actions.browser_control   import browser_control
@@ -211,6 +212,25 @@ TOOL_DECLARATIONS = [
                 "text":  {"type": "STRING", "description": "The question or instruction about the captured image"}
             },
             "required": ["text"]
+        }
+    },
+    {
+        "name": "camera_vision",
+        "description": (
+            "Real-time webcam vision. action 'start' begins continuously watching the camera "
+            "(then 'what do you see' is answered against the live view); 'stop' ends it; "
+            "'look' answers a question about the current camera view immediately. "
+            "Use when the user wants JARVIS to SEE via the camera — 'start the camera', "
+            "'what am I holding', 'read this', 'watch the door', 'who is this'."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action":   {"type": "STRING", "description": "start | stop | look"},
+                "question": {"type": "STRING", "description": "For 'look': what to ask about the camera view"},
+                "narrate":  {"type": "STRING", "description": "For 'start': 'true' to describe the scene periodically"}
+            },
+            "required": ["action"]
         }
     },
     {
@@ -543,6 +563,34 @@ class JarvisLive:
             self.speak("Standing down to normal, sir.")
             return
 
+        # ---- camera vision (real-time) ----
+        if low in ("start camera", "camera on", "open camera", "start watching",
+                   "keep an eye out", "eyes on", "camera up", "watch this"):
+            msg = start_camera_stream(speak=self.speak, player=self.ui, fps=2.0, narrate=False)
+            self.ui.write_log(f"SYS: {msg}")
+            self.speak(msg)
+            return
+        if low in ("start camera and describe", "narrate camera", "describe what you see",
+                   "camera on and narrate", "watch and describe", "keep describing"):
+            msg = start_camera_stream(speak=self.speak, player=self.ui, fps=2.0, narrate=True)
+            self.ui.write_log(f"SYS: {msg}")
+            self.speak(msg)
+            return
+        if low in ("stop camera", "camera off", "stop watching", "eyes off", "camera down"):
+            msg = stop_camera_stream()
+            self.ui.write_log(f"SYS: {msg}")
+            self.speak(msg)
+            return
+        if (low.startswith("what do you see") or low.startswith("what am i holding")
+                or low.startswith("what am i looking at") or low.startswith("what is this")
+                or low.startswith("what's this") or low.startswith("read this")
+                or low.startswith("read that") or low.startswith("look at this")
+                or low.startswith("describe this") or low.startswith("who is this")
+                or low in ("look", "what do you reckon", "describe the scene")):
+            msg = camera_look(question=text, player=self.ui)
+            self.ui.write_log(f"SYS: {msg}")   # the vision session speaks the answer
+            return
+
         # ---- deep research trigger ("research X" / "deep research on X") ----
         m = re.match(r"^(?:deep\s+)?research\s+(?:on\s+|about\s+)?(.+)$", t, re.IGNORECASE)
         if m and len(m.group(1).strip()) > 2:
@@ -721,6 +769,18 @@ class JarvisLive:
                     daemon=True
                 ).start()
                 result = "Vision module activated. Stay completely silent — vision module will speak directly."
+
+            elif name == "camera_vision":
+                act = (args.get("action") or "").lower().strip()
+                if act == "start":
+                    narrate = str(args.get("narrate", "")).lower() in ("true", "1", "yes")
+                    result = start_camera_stream(speak=self.speak, player=self.ui, fps=2.0, narrate=narrate)
+                elif act == "stop":
+                    result = stop_camera_stream()
+                elif act == "look":
+                    result = camera_look(args.get("question") or "What do you see right now?", player=self.ui)
+                else:
+                    result = f"Unknown camera action: '{act}'. Use start, stop, or look."
 
             elif name == "computer_settings":
                 r = await loop.run_in_executor(None, lambda: computer_settings(parameters=args, response=None, player=self.ui))
