@@ -127,6 +127,17 @@ generated_code
   description: string (required) — a precise description of the Python task to
     write and run. The catch-all for anything computational or not covered above.
 
+computer_use
+  task: string (required) — drive the GUI with vision to accomplish a multi-step
+    on-screen task in the CURRENT application. Use when no dedicated tool or
+    script fits (e.g. "in Photoshop, remove the background of the open image").
+  max_steps: int (optional, default 30)
+
+blender
+  description: string (required) — what 3D object or scene to build. Launches
+    Blender and runs a generated bpy script — the best way to model anything.
+  open_gui: boolean (optional, default true)
+
 EXAMPLES:
 
 Goal: "research mechanical engineering and save it to a notepad file"
@@ -178,6 +189,16 @@ Steps:
 
 web_search | query: "top technology news today"
 generated_code | description: "Take the news text provided as {{step_1}} and produce 5 concise bullet points, then save them to notes.txt on the Desktop."
+
+Goal: "open Blender and create a realistic sword"
+Steps:
+
+blender | description: "a realistic medieval longsword: detailed folded-steel blade with a sharp point, ornate crossguard and pommel, leather-wrapped grip, PBR metal material, three-point studio lighting, camera framed on the sword, and a render to the Desktop"
+
+Goal: "in Photoshop, remove the background of the currently open image"
+Steps:
+
+computer_use | task: "In the open Photoshop window, remove the background of the current image and export a transparent PNG."
 
 OUTPUT — return ONLY valid JSON, no markdown, no explanation, no code blocks:
 {
