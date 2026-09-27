@@ -7,7 +7,6 @@ import os
 import sys
 import time
 import threading
-import cv2
 import mss
 import mss.tools
 import sounddevice as sd
@@ -64,6 +63,7 @@ def _get_api_key() -> str:
 
 
 def _get_camera_index() -> int:
+    import cv2
     try:
         with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
             cfg = json.load(f)
@@ -76,7 +76,7 @@ def _get_camera_index() -> int:
     best_index = 0
 
     for idx in range(6):
-        cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
+        cap = cv2.VideoCapture(idx, getattr(cv2, "CAP_DSHOW", cv2.CAP_ANY))
         if not cap.isOpened():
             cap.release()
             continue
@@ -124,8 +124,9 @@ def _capture_screenshot() -> bytes:
 
 
 def _capture_camera() -> bytes:
+    import cv2
     camera_index = _get_camera_index()
-    cap = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)
+    cap = cv2.VideoCapture(camera_index, getattr(cv2, "CAP_DSHOW", cv2.CAP_ANY))
     if not cap.isOpened():
         raise RuntimeError(f"Camera could not be opened: index {camera_index}")
     for _ in range(10):

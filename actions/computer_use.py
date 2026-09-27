@@ -7,10 +7,12 @@ Two automation engines, picked automatically:
      with stuck-detection and self-correction. The general "operate anything" primitive.
   2. blender()       — the PEAK path for scriptable apps: generate a real bpy
      (Blender Python) script for the described object and run it in Blender.
-     Deterministic and high-quality, instead of flaky blind GUI-clicking.
 
-All heavy deps (pyautogui / mss / google.genai) are imported lazily so the core
-control logic can be imported and unit-tested without a display or API key.
+Low-RAM friendly: screenshots are downscaled + JPEG-compressed before being sent
+to the vision model, and returned coordinates are rescaled back to the real
+screen, so it stays light on 4GB machines without losing click accuracy.
+All heavy deps (pyautogui / mss / PIL / google.genai) are imported lazily so the
+core control logic can be imported and unit-tested without a display or API key.
 """
 from __future__ import annotations
 
@@ -85,6 +87,24 @@ def _parse_action(text: str) -> dict:
     return out
 
 
+def _scale_coords(action: dict, img_size, screen_size) -> dict:
+    """Rescale coordinates from the (possibly downscaled) image to the real screen."""
+    if not img_size or not screen_size:
+        return action
+    iw, ih = img_size
+    sw, sh = screen_size
+    if iw <= 0 or ih <= 0 or (iw == sw and ih == sh):
+        return action
+    sx, sy = sw / iw, sh / ih
+    for k in ("x", "x2"):
+        if k in action:
+            action[k] = int(round(action[k] * sx))
+    for k in ("y", "y2"):
+        if k in action:
+            action[k] = int(round(action[k] * sy))
+    return action
+
+
 # --------------------------------------------------------------------------- #
 #  Default executor (maps actions onto the existing computer_control primitives)
 # --------------------------------------------------------------------------- #
@@ -117,16 +137,31 @@ def _default_exec(action: dict) -> str:
 
 
 # --------------------------------------------------------------------------- #
-#  Default capture + vision (google.genai, mirrors screen_processor)
+#  Default capture (downscaled + JPEG for low RAM) + vision (google.genai)
 # --------------------------------------------------------------------------- #
-def _default_capture():
+def _default_capture(max_w: int = 1280, quality: int = 70):
+    """Return (jpeg_bytes, mime, (img_w, img_h), (screen_w, screen_h)).
+
+    The image is downscaled to <=max_w wide and JPEG-compressed so the vision
+    payload stays small on low-RAM machines; the real screen size is returned so
+    coordinates can be rescaled back before clicking.
+    """
+    import io
     import mss
     import mss.tools
     import pyautogui
+    import PIL.Image
+
     with mss.mss() as sct:
         shot = sct.grab(sct.monitors[0])
         png = mss.tools.to_png(shot.rgb, shot.size)
-    return png, "image/png", tuple(pyautogui.size())
+
+    img = PIL.Image.open(io.BytesIO(png)).convert("RGB")
+    if img.width > max_w:
+        img = img.resize((max_w, max(1, int(img.height * max_w / img.width))), PIL.Image.BILINEAR)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=quality, optimize=True)
+    return buf.getvalue(), "image/jpeg", (img.width, img.height), tuple(pyautogui.size())
 
 
 _VISION_SYSTEM = (
@@ -143,11 +178,11 @@ _VISION_SYSTEM = (
 )
 
 
-def _default_vision(img_bytes, mime, task, history, size, stuck_hint=""):
+def _default_vision(img_bytes, mime, task, history, img_size, stuck_hint=""):
     from google import genai
     from google.genai import types
 
-    w, h = size
+    w, h = img_size
     client = genai.Client(api_key=_get_api_key(), http_options={"api_version": "v1beta"})
     hist = "\n".join(history[-14:]) or "(none yet)"
     prompt = f"TASK: {task}\n\nACTIONS SO FAR:\n{hist}{stuck_hint}\n\nReturn the single next action as JSON."
@@ -184,7 +219,7 @@ def _run_loop(task, max_steps=30, speak=None,
 
     for i in range(1, max_steps + 1):
         try:
-            img_bytes, mime, size = capture_fn()
+            img_bytes, mime, img_size, screen_size = capture_fn()
         except Exception as e:
             return f"FAILED: could not capture the screen ({e})."
 
@@ -198,8 +233,9 @@ def _run_loop(task, max_steps=30, speak=None,
                           "Change approach — different coordinates, a keyboard shortcut, scroll, or wait.")
 
         try:
-            raw = vision_fn(img_bytes, mime, task, history, size, stuck_hint)
+            raw = vision_fn(img_bytes, mime, task, history, img_size, stuck_hint)
             action = _parse_action(raw)
+            action = _scale_coords(action, img_size, screen_size)
             parse_errors = 0
         except Exception as e:
             parse_errors += 1
@@ -333,7 +369,6 @@ def blender_create(description: str, open_gui: bool = True, speak=None,
 #  Tool entry points (called by the executor)
 # --------------------------------------------------------------------------- #
 def _get_api_key() -> str:
-    import sys
     from pathlib import Path
     base = Path(__file__).resolve().parent.parent
     cfg = base / "config" / "api_keys.json"
