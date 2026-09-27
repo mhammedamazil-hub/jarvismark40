@@ -5,7 +5,15 @@ import platform
 import shutil
 import subprocess
 from pathlib import Path
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
+from urllib.parse import quote_plus
+
+try:
+    from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
+    _PLAYWRIGHT_OK = True
+except Exception:
+    async_playwright = None
+    PlaywrightTimeout = Exception
+    _PLAYWRIGHT_OK = False
 
 
 def _get_default_browser_id() -> str:
@@ -272,10 +280,11 @@ class _BrowserThread:
             return f"Navigation error: {e}"
 
     async def _search(self, query: str, engine: str = "google") -> str:
+        q = quote_plus(query)
         engines = {
-            "google":     f"https://www.google.com/search?q={query.replace(' ', '+')}",
-            "bing":       f"https://www.bing.com/search?q={query.replace(' ', '+')}",
-            "duckduckgo": f"https://duckduckgo.com/?q={query.replace(' ', '+')}",
+            "google":     f"https://www.google.com/search?q={q}",
+            "bing":       f"https://www.bing.com/search?q={q}",
+            "duckduckgo": f"https://duckduckgo.com/?q={q}",
         }
         url = engines.get(engine.lower(), engines["google"])
         return await self._go_to(url)
@@ -450,6 +459,9 @@ def browser_control(
         fields      : {selector: value} dict for fill_form
         clear_first : bool, clear input before typing (default: True)
     """
+    if not _PLAYWRIGHT_OK:
+        return "Playwright isn't installed. Run: pip install playwright && playwright install chromium"
+
     _ensure_started()
 
     action = (parameters or {}).get("action", "").lower().strip()

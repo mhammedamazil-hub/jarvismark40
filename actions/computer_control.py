@@ -1,6 +1,7 @@
 #computer_control.py
 import io
 import json
+import platform
 import re
 import string
 import subprocess
@@ -40,7 +41,15 @@ def _load_config() -> dict:
         return {}
 
 def _get_os() -> str:
-    return _load_config().get("os_system", "windows").lower()
+    cfg = str(_load_config().get("os_system", "")).strip().lower()
+    if cfg in ("windows", "mac", "linux"):
+        return cfg
+    sysname = platform.system().lower()
+    if sysname.startswith("win"):
+        return "windows"
+    if sysname == "darwin":
+        return "mac"
+    return "linux"
 
 _SAFE_SCREENSHOT_ROOTS = (
     Path.home(),
@@ -141,6 +150,13 @@ def _user_profile() -> dict:
 
 def _type(text: str, interval: float = 0.03) -> str:
     _require_pyautogui()
+    # pyautogui.typewrite only handles ASCII — route emoji / accented /
+    # non-Latin text (e.g. Malayalam) through the clipboard instead.
+    if text and any(ord(c) > 127 for c in text) and _PYPERCLIP:
+        pyperclip.copy(text)
+        time.sleep(0.1)
+        pyautogui.hotkey("ctrl", "v")
+        return f"Typed (clipboard): {text[:60]}{'…' if len(text) > 60 else ''}"
     time.sleep(0.3)
     pyautogui.typewrite(text, interval=interval)
     return f"Typed: {text[:60]}{'…' if len(text) > 60 else ''}"

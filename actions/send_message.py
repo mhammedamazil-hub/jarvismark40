@@ -4,21 +4,51 @@
 # hardcoded tab/click sequences — works on any screen resolution.
 
 import time
-import pyautogui
+import sys
 from pathlib import Path
 
-pyautogui.FAILSAFE = True
-pyautogui.PAUSE = 0.08
+try:
+    import pyautogui
+    pyautogui.FAILSAFE = True
+    pyautogui.PAUSE = 0.08
+    _PYAUTOGUI = True
+except ImportError:
+    pyautogui = None
+    _PYAUTOGUI = False
+
+
+def _smart_write(text: str, interval: float = 0.03) -> None:
+    """Type text; route non-ASCII (emoji / Malayalam / accents) via the clipboard."""
+    if text and any(ord(c) > 127 for c in text):
+        try:
+            import pyperclip
+            pyperclip.copy(text)
+            time.sleep(0.1)
+            pyautogui.hotkey("ctrl", "v")
+            return
+        except Exception:
+            pass
+    pyautogui.write(text, interval=interval)
 
 def _open_app(app_name: str) -> bool:
-    """Opens an app via Windows search."""
+    """Opens an app cross-platform (Windows Start / macOS open / Linux launcher)."""
     try:
-        pyautogui.press("win")
-        time.sleep(0.4)
-        pyautogui.write(app_name, interval=0.04)
-        time.sleep(0.5)
-        pyautogui.press("enter")
-        time.sleep(2.0)  
+        if sys.platform == "win32":
+            pyautogui.press("win")
+            time.sleep(0.4)
+            pyautogui.write(app_name, interval=0.04)
+            time.sleep(0.5)
+            pyautogui.press("enter")
+            time.sleep(2.0)
+            return True
+        if sys.platform == "darwin":
+            import subprocess
+            subprocess.run(["open", "-a", app_name], timeout=8)
+            time.sleep(1.5)
+            return True
+        from actions.open_app import open_app
+        open_app({"app_name": app_name})
+        time.sleep(1.5)
         return True
     except Exception as e:
         print(f"[SendMessage] Could not open {app_name}: {e}")
@@ -34,7 +64,7 @@ def _search_contact(contact: str, platform: str):
     pyautogui.hotkey("ctrl", "f")
     time.sleep(0.4)
     pyautogui.hotkey("ctrl", "a")
-    pyautogui.write(contact, interval=0.04)
+    _smart_write(contact)
     time.sleep(0.8)
     pyautogui.press("enter")
     time.sleep(0.6)
@@ -45,7 +75,7 @@ def _type_and_send(message: str):
     pyautogui.press("tab")
     time.sleep(0.2)
     pyautogui.hotkey("ctrl", "a")
-    pyautogui.write(message, interval=0.03)
+    _smart_write(message)
     time.sleep(0.2)
     pyautogui.press("enter")
     time.sleep(0.3)
@@ -65,13 +95,13 @@ def _send_whatsapp(receiver: str, message: str) -> str:
         pyautogui.hotkey("ctrl", "f")
         time.sleep(0.4)
         pyautogui.hotkey("ctrl", "a")
-        pyautogui.write(receiver, interval=0.04)
+        _smart_write(receiver)
         time.sleep(1.0)
 
         pyautogui.press("enter")
         time.sleep(0.8)
 
-        pyautogui.write(message, interval=0.03)
+        _smart_write(message)
         time.sleep(0.2)
         pyautogui.press("enter")
 
@@ -92,7 +122,7 @@ def _send_instagram(receiver: str, message: str) -> str:
         webbrowser.open("https://www.instagram.com/direct/new/")
         time.sleep(3.5)
 
-        pyautogui.write(receiver, interval=0.05)
+        _smart_write(receiver)
         time.sleep(1.5)
 
         pyautogui.press("down")
@@ -106,7 +136,7 @@ def _send_instagram(receiver: str, message: str) -> str:
         pyautogui.press("enter")
         time.sleep(1.5)
 
-        pyautogui.write(message, interval=0.04)
+        _smart_write(message)
         time.sleep(0.2)
         pyautogui.press("enter")
 
@@ -125,12 +155,12 @@ def _send_telegram(receiver: str, message: str) -> str:
 
         pyautogui.hotkey("ctrl", "f")
         time.sleep(0.4)
-        pyautogui.write(receiver, interval=0.04)
+        _smart_write(receiver)
         time.sleep(1.0)
         pyautogui.press("enter")
         time.sleep(0.8)
 
-        pyautogui.write(message, interval=0.03)
+        _smart_write(message)
         time.sleep(0.2)
         pyautogui.press("enter")
 
@@ -154,11 +184,11 @@ def _send_generic(platform: str, receiver: str, message: str) -> str:
         time.sleep(1.5)
         pyautogui.hotkey("ctrl", "f")
         time.sleep(0.4)
-        pyautogui.write(receiver, interval=0.04)
+        _smart_write(receiver)
         time.sleep(1.0)
         pyautogui.press("enter")
         time.sleep(0.8)
-        pyautogui.write(message, interval=0.03)
+        _smart_write(message)
         time.sleep(0.2)
         pyautogui.press("enter")
 

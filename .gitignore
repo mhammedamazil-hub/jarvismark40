@@ -31,3 +31,6 @@ desktop.ini
 # ---- Logs & temp ----
 *.log
 Git.log
+
+# ---- Runtime state ----
+memory/reminders.json

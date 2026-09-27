@@ -5,6 +5,7 @@ import re
 import sys
 import time
 import subprocess
+import shutil
 import platform
 from pathlib import Path
 
@@ -105,23 +106,34 @@ def volume_set(value: int):
             capture_output=True)
         return
 
+def _xrandr_brightness(delta: float) -> None:
+    """Software brightness via xrandr (X11 only) — reads current value cleanly."""
+    try:
+        out = subprocess.run(["xrandr", "--verbose"], capture_output=True,
+                             text=True, timeout=5).stdout
+        m = re.search(r"(\S+)\s+connected.*?Brightness:\s*([\d.]+)", out, re.DOTALL)
+        if not m:
+            return
+        output, cur = m.group(1), float(m.group(2))
+        new = max(0.1, min(1.0, cur + delta))
+        subprocess.run(["xrandr", "--output", output, "--brightness", f"{new:.2f}"],
+                       capture_output=True)
+    except Exception:
+        pass
+
+
 def brightness_up():
     if _OS == "Darwin":
         subprocess.run(["osascript", "-e",
             'tell application "System Events" to key code 144'],
             capture_output=True)
     elif _OS == "Linux":
-        if subprocess.run(["which", "brightnessctl"],
-                capture_output=True).returncode == 0:
+        if shutil.which("brightnessctl"):
             subprocess.run(["brightnessctl", "set", "+10%"], capture_output=True)
+        elif shutil.which("light"):
+            subprocess.run(["light", "-A", "10"], capture_output=True)
         else:
-            subprocess.run(
-                'xrandr --output $(xrandr | grep " connected" | head -1 | cut -d " " -f1)'
-                ' --brightness $(python3 -c "import subprocess; '
-                'b=float(subprocess.check_output([\"xrandr\",\"--verbose\"]).decode()'
-                '.split(\"Brightness:\")[1].split()[0]); print(min(1.0,b+0.1))")',
-                shell=True, capture_output=True
-            )
+            _xrandr_brightness(+0.1)
     else:
         try:
             subprocess.run(
@@ -140,17 +152,12 @@ def brightness_down():
             'tell application "System Events" to key code 145'],
             capture_output=True)
     elif _OS == "Linux":
-        if subprocess.run(["which", "brightnessctl"],
-                capture_output=True).returncode == 0:
+        if shutil.which("brightnessctl"):
             subprocess.run(["brightnessctl", "set", "10%-"], capture_output=True)
+        elif shutil.which("light"):
+            subprocess.run(["light", "-U", "10"], capture_output=True)
         else:
-            subprocess.run(
-                'xrandr --output $(xrandr | grep " connected" | head -1 | cut -d " " -f1)'
-                ' --brightness $(python3 -c "import subprocess; '
-                'b=float(subprocess.check_output([\"xrandr\",\"--verbose\"]).decode()'
-                '.split(\"Brightness:\")[1].split()[0]); print(max(0.1,b-0.1))")',
-                shell=True, capture_output=True
-            )
+            _xrandr_brightness(-0.1)
     else:
         try:
             subprocess.run(
@@ -194,25 +201,34 @@ def maximize_window():
         except Exception:
             pyautogui.hotkey("super", "up")
 
+def _screen_size() -> tuple:
+    try:
+        w, h = pyautogui.size()
+        return int(w), int(h)
+    except Exception:
+        return 1920, 1080
+
 def snap_left():
     if _OS == "Windows":
         pyautogui.hotkey("win", "left")
     elif _OS == "Linux":
+        w, h = _screen_size()
         try:
-            subprocess.run(["wmctrl", "-r", ":ACTIVE:", "-e", "0,0,0,960,1080"],
+            subprocess.run(["wmctrl", "-r", ":ACTIVE:", "-e", f"0,0,0,{w // 2},{h}"],
                 capture_output=True)
         except Exception:
-            pass
+            pyautogui.hotkey("super", "left")
 
 def snap_right():
     if _OS == "Windows":
         pyautogui.hotkey("win", "right")
     elif _OS == "Linux":
+        w, h = _screen_size()
         try:
-            subprocess.run(["wmctrl", "-r", ":ACTIVE:", "-e", "0,960,0,960,1080"],
+            subprocess.run(["wmctrl", "-r", ":ACTIVE:", "-e", f"0,{w // 2},0,{w - w // 2},{h}"],
                 capture_output=True)
         except Exception:
-            pass
+            pyautogui.hotkey("super", "right")
 
 def switch_window():
     if _OS == "Darwin": pyautogui.hotkey("command", "tab")
@@ -229,7 +245,7 @@ def open_task_manager():
     elif _OS == "Darwin":
         subprocess.Popen(["open", "-a", "Activity Monitor"])
     else:
-        for cmd in [["gnome-system-monitor"], ["xfce4-taskmanager"], ["htop"]]:
+        for cmd in [["cinnamon-system-monitor"], ["gnome-system-monitor"], ["xfce4-taskmanager"], ["htop"]]:
             if subprocess.run(["which", cmd[0]], capture_output=True).returncode == 0:
                 subprocess.Popen(cmd)
                 break
@@ -384,7 +400,7 @@ def open_system_settings():
     elif _OS == "Darwin":
         subprocess.Popen(["open", "-a", "System Preferences"])
     else:
-        for cmd in [["gnome-control-center"], ["xfce4-settings-manager"], ["kcmshell5"]]:
+        for cmd in [["cinnamon-settings"], ["gnome-control-center"], ["xfce4-settings-manager"], ["systemsettings"], ["kcmshell5"]]:
             if subprocess.run(["which", cmd[0]], capture_output=True).returncode == 0:
                 subprocess.Popen(cmd)
                 return

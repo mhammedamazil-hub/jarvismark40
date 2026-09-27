@@ -48,7 +48,21 @@ _APP_ALIASES = {
     "blender":            {"Windows": "blender",                "Darwin": "Blender",             "Linux": "blender"},
     "capcut":             {"Windows": "CapCut",                 "Darwin": "CapCut",              "Linux": "capcut"},
     "postman":            {"Windows": "Postman",                "Darwin": "Postman",             "Linux": "postman"},
-    "figma":              {"Windows": "Figma",                  "Darwin": "Figma",               "Linux": "figma"},
+    "figma":             {"Windows": "Figma",                 "Darwin": "Figma",                 "Linux": "figma"},
+}
+
+
+# Linux binary candidates per canonical app, Mint/Cinnamon-preferred first so
+# the launcher works across GNOME, Cinnamon (Mint), KDE and XFCE.
+_LINUX_CANDIDATES = {
+    "gnome-terminal":        ["gnome-terminal", "x-terminal-emulator", "konsole", "xfce4-terminal", "xterm"],
+    "bash":                  ["gnome-terminal", "x-terminal-emulator", "konsole", "xfce4-terminal", "xterm"],
+    "gedit":                 ["xed", "gedit", "mousepad", "kate"],
+    "nautilus":              ["nemo", "nautilus", "thunar", "dolphin"],
+    "gnome-calculator":      ["gnome-calculator", "kcalc", "galculator"],
+    "gnome-control-center":  ["cinnamon-settings", "gnome-control-center", "xfce4-settings-manager", "systemsettings"],
+    "gnome-system-monitor":  ["cinnamon-system-monitor", "gnome-system-monitor", "xfce4-taskmanager", "ksysguard"],
+    "gimp":                  ["gimp"],
 }
 
 
@@ -128,18 +142,25 @@ def _launch_macos(app_name: str) -> bool:
 
 
 def _launch_linux(app_name: str) -> bool:
-    binary = (
-        shutil.which(app_name) or
-        shutil.which(app_name.lower()) or
-        shutil.which(app_name.lower().replace(" ", "-"))
-    )
-    if binary:
-        try:
-            subprocess.Popen([binary], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            time.sleep(1.0)
-            return True
-        except Exception:
-            pass
+    candidates = [app_name, app_name.lower(), app_name.lower().replace(" ", "-")]
+    # Expand with desktop-appropriate alternatives (Mint/Cinnamon first).
+    for alt in _LINUX_CANDIDATES.get(app_name.lower(), []):
+        if alt not in candidates:
+            candidates.append(alt)
+
+    seen = set()
+    for name in candidates:
+        if name in seen:
+            continue
+        seen.add(name)
+        binary = shutil.which(name)
+        if binary:
+            try:
+                subprocess.Popen([binary], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                time.sleep(1.0)
+                return True
+            except Exception:
+                pass
 
     try:
         subprocess.run(["xdg-open", app_name], capture_output=True, timeout=5)

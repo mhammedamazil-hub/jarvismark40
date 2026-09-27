@@ -1,156 +1,203 @@
 # actions/reminder.py
+"""
+Cross-platform timed reminders for JARVIS.
 
-import subprocess
-import os
+An in-process scheduler (daemon thread) fires a NATIVE desktop notification
+when each reminder comes due — works on Linux (notify-send), macOS
+(osascript) and Windows (toast/beep). Pending reminders persist to
+memory/reminders.json and are re-armed automatically when JARVIS restarts,
+so a reminder set for later still fires as long as JARVIS is running then.
+
+This replaces the previous Windows-only implementation (winsound /
+win10toast / schtasks), which could never work on Linux Mint.
+"""
+
 import sys
+import json
+import time
+import shutil
+import threading
 from datetime import datetime
+from pathlib import Path
+
+BASE_DIR   = Path(__file__).resolve().parent.parent
+STORE_PATH = BASE_DIR / "memory" / "reminders.json"
+
+CHECK_INTERVAL = 15  # seconds between due-checks
+
+_lock    = threading.RLock()
+_pending: list[dict] = []          # [{"when": "<iso>", "message": "..."}]
+_started = False
 
 
-def reminder(
-    parameters: dict,
-    response: str | None = None,
-    player=None,
-    session_memory=None
-) -> str:
-    """
-    Sets a timed reminder using Windows Task Scheduler.
-
-    parameters:
-        - date    (str) YYYY-MM-DD
-        - time    (str) HH:MM
-        - message (str)
-
-    Returns a result string — Live API voices it automatically.
-    No edge_speak needed.
-    """
-
-    date_str = parameters.get("date")
-    time_str = parameters.get("time")
-    message  = parameters.get("message", "Reminder")
-
-    if not date_str or not time_str:
-        return "I need both a date and a time to set a reminder."
-
+# ── persistence ──────────────────────────────────────────────────────────────
+def _load_store() -> None:
+    global _pending
     try:
-        target_dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+        if STORE_PATH.exists():
+            data = json.loads(STORE_PATH.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                _pending = [
+                    r for r in data
+                    if isinstance(r, dict) and r.get("when") and r.get("message")
+                ]
+    except Exception:
+        _pending = []
 
-        if target_dt <= datetime.now():
-            return "That time is already in the past."
 
-        task_name    = f"MARKReminder_{target_dt.strftime('%Y%m%d_%H%M')}"
-        safe_message = message.replace('"', '').replace("'", "").strip()[:200]
-
-        python_exe = sys.executable
-        if python_exe.lower().endswith("python.exe"):
-            pythonw = python_exe.replace("python.exe", "pythonw.exe")
-            if os.path.exists(pythonw):
-                python_exe = pythonw
-
-        temp_dir      = os.environ.get("TEMP", "C:\\Temp")
-        notify_script = os.path.join(temp_dir, f"{task_name}.pyw")
-        project_root  = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..")
+def _save_store() -> None:
+    try:
+        STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        STORE_PATH.write_text(
+            json.dumps(_pending, ensure_ascii=False, indent=2), encoding="utf-8"
         )
-
-        script_code = f'''import sys, os, time
-sys.path.insert(0, r"{project_root}")
-
-try:
-    import winsound
-    for freq in [800, 1000, 1200]:
-        winsound.Beep(freq, 200)
-        time.sleep(0.1)
-except Exception:
-    pass
-
-try:
-    from win10toast import ToastNotifier
-    ToastNotifier().show_toast(
-        "MARK Reminder",
-        "{safe_message}",
-        duration=15,
-        threaded=False
-    )
-except Exception:
-    try:
-        import subprocess
-        subprocess.run(["msg", "*", "/TIME:30", "{safe_message}"], shell=True)
     except Exception:
         pass
 
-time.sleep(3)
-try:
-    os.remove(__file__)
-except Exception:
-    pass
-'''
-        with open(notify_script, "w", encoding="utf-8") as f:
-            f.write(script_code)
 
-        xml_content = f'''<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo>
-    <Description>MARK Reminder: {safe_message}</Description>
-  </RegistrationInfo>
-  <Triggers>
-    <TimeTrigger>
-      <StartBoundary>{target_dt.strftime("%Y-%m-%dT%H:%M:%S")}</StartBoundary>
-      <Enabled>true</Enabled>
-    </TimeTrigger>
-  </Triggers>
-  <Actions>
-    <Exec>
-      <Command>{python_exe}</Command>
-      <Arguments>"{notify_script}"</Arguments>
-    </Exec>
-  </Actions>
-  <Settings>
-    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
-    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
-    <StartWhenAvailable>true</StartWhenAvailable>
-    <WakeToRun>true</WakeToRun>
-    <ExecutionTimeLimit>PT5M</ExecutionTimeLimit>
-    <Enabled>true</Enabled>
-  </Settings>
-  <Principals>
-    <Principal>
-      <LogonType>InteractiveToken</LogonType>
-      <RunLevel>LeastPrivilege</RunLevel>
-    </Principal>
-  </Principals>
-</Task>'''
-
-        xml_path = os.path.join(temp_dir, f"{task_name}.xml")
-        with open(xml_path, "w", encoding="utf-16") as f:
-            f.write(xml_content)
-
-        result = subprocess.run(
-            f'schtasks /Create /TN "{task_name}" /XML "{xml_path}" /F',
-            shell=True, capture_output=True, text=True
-        )
-
-        try:
-            os.remove(xml_path)
-        except Exception:
-            pass
-
-        if result.returncode != 0:
-            err = result.stderr.strip() or result.stdout.strip()
-            print(f"[Reminder] ❌ schtasks failed: {err}")
+# ── notification (best-effort, cross-platform) ───────────────────────────────
+def _notify(message: str) -> None:
+    msg = str(message).replace('"', "'").strip()[:300] or "Reminder"
+    plat = sys.platform
+    try:
+        if plat == "win32":
             try:
-                os.remove(notify_script)
+                from win10toast import ToastNotifier
+                ToastNotifier().show_toast("JARVIS Reminder", msg, duration=15, threaded=True)
+                return
             except Exception:
                 pass
-            return "I couldn't schedule the reminder due to a system error."
+            try:
+                import winsound
+                for freq in (800, 1000, 1200):
+                    winsound.Beep(freq, 200)
+            except Exception:
+                pass
 
-        if player:
-            player.write_log(f"[reminder] set for {date_str} {time_str}")
+        elif plat == "darwin":
+            import subprocess
+            subprocess.run(
+                ["osascript", "-e",
+                 f'display notification "{msg}" with title "JARVIS Reminder" sound name "Glass"'],
+                capture_output=True,
+            )
 
-        return f"Reminder set for {target_dt.strftime('%B %d at %I:%M %p')}."
+        else:  # Linux / BSD
+            import subprocess
+            if shutil.which("notify-send"):
+                subprocess.run(
+                    ["notify-send", "-a", "JARVIS", "-u", "critical",
+                     "JARVIS Reminder", msg],
+                    capture_output=True,
+                )
+            # Best-effort audible chime (speech or a system sound), if available.
+            for speaker in ("spd-say", "espeak-ng", "espeak"):
+                if shutil.which(speaker):
+                    try:
+                        subprocess.run([speaker, f"Reminder, sir. {msg}"], capture_output=True)
+                    except Exception:
+                        pass
+                    break
+    except Exception:
+        pass
 
+
+# ── scheduler ────────────────────────────────────────────────────────────────
+def _fire_due(now: datetime | None = None) -> int:
+    """Fire every reminder whose time has passed. Returns how many fired."""
+    now = now or datetime.now()
+    due, remaining = [], []
+    with _lock:
+        for r in _pending:
+            try:
+                when = datetime.fromisoformat(r["when"])
+            except Exception:
+                continue
+            (due if when <= now else remaining).append(r)
+        if due:
+            _pending[:] = remaining
+            _save_store()
+    for r in due:
+        print(f"[Reminder] ⏰ Firing: {r.get('message')}")
+        _notify(r.get("message", "Reminder"))
+    return len(due)
+
+
+def _worker() -> None:
+    while True:
+        try:
+            _fire_due()
+        except Exception as e:
+            print(f"[Reminder] scheduler error: {e}")
+        time.sleep(CHECK_INTERVAL)
+
+
+def _ensure_started() -> None:
+    global _started
+    with _lock:
+        if not _started:
+            _load_store()
+            threading.Thread(target=_worker, daemon=True, name="ReminderScheduler").start()
+            _started = True
+
+
+# ── public API ───────────────────────────────────────────────────────────────
+def reminder(
+    parameters: dict | None = None,
+    response=None,
+    player=None,
+    session_memory=None,
+) -> str:
+    """
+    Schedule a reminder.
+
+    parameters:
+        date    (str) YYYY-MM-DD
+        time    (str) HH:MM (24h)
+        message (str) what to be reminded about
+    """
+    p        = parameters or {}
+    date_str = str(p.get("date", "")).strip()
+    time_str = str(p.get("time", "")).strip()
+    message  = str(p.get("message", "Reminder")).strip() or "Reminder"
+
+    if not date_str or not time_str:
+        return "I need both a date and a time to set a reminder, sir."
+
+    try:
+        target = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
     except ValueError:
-        return "I couldn't understand that date or time format."
+        return "I couldn't understand that date or time. Please use YYYY-MM-DD and HH:MM, sir."
 
-    except Exception as e:
-        return f"Something went wrong while scheduling the reminder: {str(e)[:80]}"
+    if target <= datetime.now():
+        return "That time is already in the past, sir."
+
+    _ensure_started()
+    with _lock:
+        _pending.append({"when": target.isoformat(), "message": message})
+        _save_store()
+
+    if player:
+        player.write_log(f"[reminder] set for {date_str} {time_str}")
+
+    return f"Reminder set for {target.strftime('%B %d at %I:%M %p')}, sir."
+
+
+def list_reminders() -> str:
+    """Return a human-readable list of pending reminders."""
+    _ensure_started()
+    with _lock:
+        if not _pending:
+            return "You have no pending reminders, sir."
+        items = []
+        for r in sorted(_pending, key=lambda x: x.get("when", "")):
+            try:
+                when = datetime.fromisoformat(r["when"]).strftime("%b %d, %I:%M %p")
+            except Exception:
+                when = r.get("when", "?")
+            items.append(f"• {when} — {r.get('message', '')}")
+        return "Pending reminders:\n" + "\n".join(items)
+
+
+# Re-arm any reminders saved from a previous session as soon as this module loads.
+_ensure_started()
