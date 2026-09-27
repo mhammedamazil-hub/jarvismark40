@@ -14,16 +14,23 @@ BASE_DIR        = get_base_dir()
 API_CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
 
 
-PLANNER_PROMPT = """You are the planning module of MARK XXV, a personal AI assistant.
+PLANNER_PROMPT = """You are the planning module of MARK XXXIX, a personal AI assistant.
 Your job: break any user goal into a sequence of steps using ONLY the tools listed below.
 
-ABSOLUTE RULES:
-- NEVER use generated_code or write Python scripts. It does not exist.
-- NEVER reference previous step results in parameters. Every step is independent.
+RULES:
+- CHAIN STEPS: a later step may consume an earlier step's output using the
+  placeholder {{step_N}} (or {{step_N.output}}), where N is that step's number.
+  This is the PREFERRED way to pass data forward — e.g. search -> summarise ->
+  save to file -> open it. Never invent data a previous step already produced.
 - Use web_search for ANY information retrieval, research, or current data.
-- Use file_controller to save content to disk.
-- Use cmd_control to open files or run system commands.
-- Max 5 steps. Use the minimum steps needed.
+- Use file_controller to save content to disk; cmd_control to open files or run
+  system commands.
+- Use generated_code for ANY computational, data-processing, automation or
+  file-manipulation task that no single tool covers (maths, parsing, bulk file
+  ops, scraping, conversions...). It writes and runs real Python.
+- Up to 10 steps. Use the minimum needed; never repeat a step and never loop.
+- Every step must be independently runnable once its {{step_N}} placeholders are
+  resolved from earlier results.
 
 AVAILABLE TOOLS AND THEIR PARAMETERS:
 
@@ -54,7 +61,7 @@ file_controller
   action: "write" | "create_file" | "read" | "list" | "delete" | "move" | "copy" | "find" | "disk_usage" (required)
   path: string — use "desktop" for Desktop folder
   name: string — filename
-  content: string — file content (for write/create_file)
+  content: string — file content (for write/create_file). Use {{step_N}} to fill it from earlier results.
 
 cmd_control
   task: string (required) — natural language description of what to do
@@ -115,6 +122,11 @@ code_helper
 dev_agent
   description: string (required)
   language: string (optional)
+
+generated_code
+  description: string (required) — a precise description of the Python task to
+    write and run. The catch-all for anything computational or not covered above.
+
 EXAMPLES:
 
 Goal: "research mechanical engineering and save it to a notepad file"
@@ -122,8 +134,8 @@ Steps:
 
 web_search | query: "mechanical engineering overview definition history"
 web_search | query: "mechanical engineering applications and future trends"
-file_controller | action: write, path: desktop, name: mechanical_engineering.txt, content: "MECHANICAL ENGINEERING RESEARCH\n\nThis file will be filled with web research results."
-cmd_control | task: "open mechanical_engineering.txt on desktop with notepad"
+file_controller | action: write, path: desktop, name: mechanical_engineering.txt, content: "MECHANICAL ENGINEERING RESEARCH\\n\\n{{step_1}}\\n\\n{{step_2}}"
+cmd_control | task: "open mechanical_engineering.txt on desktop"
 
 Goal: "What is the price of Bitcoin"
 Steps:
@@ -155,6 +167,17 @@ Goal: "Open the clock and set a reminder for 30 minutes later"
 Steps:
 
 reminder | date: [today], time: [now+30min], message: "Reminder"
+
+Goal: "calculate 50 factorial and save the exact result to a file on my desktop"
+Steps:
+
+generated_code | description: "Compute 50 factorial in Python and print the exact integer, then write it to a file named factorial.txt on the Desktop and print the path."
+
+Goal: "find today's top tech news, summarise it in 5 bullet points, and email-style save it to notes.txt"
+Steps:
+
+web_search | query: "top technology news today"
+generated_code | description: "Take the news text provided as {{step_1}} and produce 5 concise bullet points, then save them to notes.txt on the Desktop."
 
 OUTPUT — return ONLY valid JSON, no markdown, no explanation, no code blocks:
 {
@@ -200,29 +223,29 @@ def create_plan(goal: str, context: str = "") -> dict:
         if "steps" not in plan or not isinstance(plan["steps"], list):
             raise ValueError("Invalid plan structure")
 
+        # Normalise steps. generated_code is a first-class, allowed tool now.
         for step in plan["steps"]:
-            if step.get("tool") in ("generated_code",):
-                print(f"[Planner] ⚠️ generated_code detected in step {step.get('step')} — replacing with web_search")
-                desc = step.get("description", goal)
-                step["tool"] = "web_search"
-                step["parameters"] = {"query": desc[:200]}
+            step.setdefault("parameters", {})
+            if not step.get("tool"):
+                step["tool"] = "generated_code"
+                step["parameters"].setdefault("description", step.get("description", goal))
 
-        print(f"[Planner] ✅ Plan: {len(plan['steps'])} steps")
+        print(f"[Planner] Plan: {len(plan['steps'])} steps")
         for s in plan["steps"]:
             print(f"  Step {s['step']}: [{s['tool']}] {s['description']}")
 
         return plan
 
     except json.JSONDecodeError as e:
-        print(f"[Planner] ⚠️ JSON parse failed: {e}")
+        print(f"[Planner] JSON parse failed: {e}")
         return _fallback_plan(goal)
     except Exception as e:
-        print(f"[Planner] ⚠️ Planning failed: {e}")
+        print(f"[Planner] Planning failed: {e}")
         return _fallback_plan(goal)
 
 
 def _fallback_plan(goal: str) -> dict:
-    print("[Planner] 🔄 Fallback plan")
+    print("[Planner] Fallback plan")
     return {
         "goal": goal,
         "steps": [
@@ -267,12 +290,13 @@ Create a REVISED plan for the remaining work only. Do not repeat completed steps
         plan     = json.loads(text)
 
         for step in plan.get("steps", []):
-            if step.get("tool") == "generated_code":
-                step["tool"] = "web_search"
-                step["parameters"] = {"query": step.get("description", goal)[:200]}
+            step.setdefault("parameters", {})
+            if not step.get("tool"):
+                step["tool"] = "generated_code"
+                step["parameters"].setdefault("description", step.get("description", goal))
 
-        print(f"[Planner] 🔄 Revised plan: {len(plan['steps'])} steps")
+        print(f"[Planner] Revised plan: {len(plan.get('steps', []))} steps")
         return plan
     except Exception as e:
-        print(f"[Planner] ⚠️ Replan failed: {e}")
+        print(f"[Planner] Replan failed: {e}")
         return _fallback_plan(goal)

@@ -127,6 +127,41 @@ def _inject_context(params: dict, tool: str, step_results: dict, goal: str = "")
                 print(f"[Executor] 💉 Injected + translated content")
 
     return params
+
+
+_PLACEHOLDER_RE = re.compile(r"\{\{\s*step_(\d+)(?:\.(?:output|result))?\s*\}\}")
+
+
+def _lookup_result(step_results: dict, key: str):
+    if key in step_results:
+        return step_results[key]
+    try:
+        ik = int(key)
+        if ik in step_results:
+            return step_results[ik]
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
+def _substitute_placeholders(obj, step_results: dict):
+    """Resolve {{step_N}} / {{step_N.output}} placeholders from earlier results."""
+    if not step_results:
+        return obj
+    if isinstance(obj, str):
+        def _repl(m):
+            val = _lookup_result(step_results, m.group(1))
+            if val is None:
+                return m.group(0)
+            return val if isinstance(val, str) else json.dumps(val, ensure_ascii=False)
+        return _PLACEHOLDER_RE.sub(_repl, obj)
+    if isinstance(obj, list):
+        return [_substitute_placeholders(x, step_results) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _substitute_placeholders(v, step_results) for k, v in obj.items()}
+    return obj
+
+
 def _detect_language(text: str) -> str:
     import google.generativeai as genai
     genai.configure(api_key=_get_api_key())
@@ -289,6 +324,7 @@ class AgentExecutor:
                 desc     = step.get("description", "")
                 params   = step.get("parameters", {})
 
+                params = _substitute_placeholders(params, step_results)
                 params = _inject_context(params, tool, step_results, goal=goal)
 
                 print(f"\n[Executor] ▶️ Step {step_num}: [{tool}] {desc}")
