@@ -34,6 +34,8 @@ from actions.dev_agent         import dev_agent
 from actions.web_search        import web_search as web_search_action
 from actions.computer_control  import computer_control
 from actions.game_updater      import game_updater
+from actions.video_player      import play_video, stop_video
+from actions.gods_eye          import gods_eye
 
 
 def get_base_dir():
@@ -122,6 +124,42 @@ TOOL_DECLARATIONS = [
                 "aspect": {"type": "STRING", "description": "price | specs | reviews"}
             },
             "required": ["query"]
+        }
+    },
+    {
+        "name": "play_video",
+        "description": (
+            "Plays a video INSIDE the HUD, right where the avatar is — a YouTube "
+            "link, a direct video URL, a local file path, or just a description to "
+            "search for (e.g. 'play the new Dune trailer'). It always starts muted; "
+            "the user can ask to unmute. Use this for any 'play X' request."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "source": {"type": "STRING", "description": "File path, video URL, or YouTube link (optional if query is given)"},
+                "query":  {"type": "STRING", "description": "What to search for and play (used when no source is given)"}
+            }
+        }
+    },
+    {
+        "name": "stop_video",
+        "description": "Stops the video playing in the HUD and returns to the avatar.",
+        "parameters": {"type": "OBJECT", "properties": {}}
+    },
+    {
+        "name": "gods_eye",
+        "description": (
+            "Opens 'God's Eye View' — a live 3D globe of real public data: aircraft, "
+            "ships, satellites, earthquakes, fires and public cameras. First run "
+            "installs it (needs Node.js); afterwards it opens fast. Use when the user "
+            "asks for god's eye, the globe, the world map, or live world tracking."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {"type": "STRING", "description": "open (default) or stop"}
+            }
         }
     },
     {
@@ -825,6 +863,18 @@ class JarvisLive:
                 from actions.research import deep_research_tool
                 r = await loop.run_in_executor(None, lambda: deep_research_tool(args, speak=self.speak, player=self.ui))
                 result = r or "Research complete."
+
+            elif name == "play_video":
+                r = await loop.run_in_executor(None, lambda: play_video(parameters=args, player=self.ui, speak=self.speak))
+                result = r or "Playing."
+
+            elif name == "stop_video":
+                r = await loop.run_in_executor(None, lambda: stop_video(parameters=args, player=self.ui, speak=self.speak))
+                result = r or "Stopped."
+
+            elif name == "gods_eye":
+                r = await loop.run_in_executor(None, lambda: gods_eye(parameters=args, player=self.ui, speak=self.speak))
+                result = r or "God's Eye launching."
 
             elif name == "shutdown_jarvis":
                 self.ui.write_log("SYS: Shutdown requested.")

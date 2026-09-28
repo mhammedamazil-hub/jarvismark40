@@ -68,6 +68,22 @@ so they are installed on Windows and automatically skipped on Linux/macOS.
 
 ---
 
+## 🆕 Latest abilities
+
+- **📺 Video in the HUD** — *"play the new Dune trailer"*, a YouTube link, a video
+  URL, or a local file plays **right where the face is**. It always starts muted;
+  say *"unmute"* (or use the header button) for sound, and the mic mutes itself
+  while the film is audible so JARVIS doesn't talk over it.
+- **🌍 God's Eye** — *"open god's eye"* launches the famous open-source
+  [God's Eye View](https://github.com/bilawalsidhu/gods-eye-view): a live 3D globe
+  of real public data (aircraft, ships, satellites, earthquakes, fires, public
+  cameras). First run installs it (needs Node.js); after that it opens fast.
+- **🪜 Model ladder** — every one-shot Gemini call now runs through a measured
+  ladder of models with timeouts + cooldowns (`core/gemini.py`), so a quota hit or
+  an outage steps to the next model instead of hanging or failing.
+
+---
+
 ## 📋 Requirements
 
 | Requirement | Details |

@@ -22,6 +22,7 @@ mss                          # fast screen capture
 psutil
 send2trash
 youtube-transcript-api
+yt-dlp                      # resolve YouTube/URL streams for in-HUD video playback
 
 # ---- Windows-only (automatically skipped on Linux/macOS) ----
 comtypes     ; platform_system == "Windows"   # COM / device control

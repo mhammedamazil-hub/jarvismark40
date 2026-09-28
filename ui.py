@@ -1267,6 +1267,7 @@ class MainWindow(QMainWindow):
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(0)
+        self._body_layout = body
 
         self._left_panel = self._build_left_panel()
         body.addWidget(self._left_panel, stretch=0)
@@ -1327,14 +1328,16 @@ class MainWindow(QMainWindow):
             act_show  = QAction("Show / Hide", self)
             act_camon = QAction("Start camera", self)
             act_camoff= QAction("Stop camera", self)
+            act_godseye = QAction("🌍  Open God's Eye", self)
             act_mute  = QAction("Toggle mute", self)
             act_quit  = QAction("Quit JARVIS", self)
             act_show.triggered.connect(self._tray_toggle_window)
             act_camon.triggered.connect(lambda: self._run_cmd("start camera"))
             act_camoff.triggered.connect(lambda: self._run_cmd("stop camera"))
+            act_godseye.triggered.connect(lambda: self._run_cmd("open god's eye"))
             act_mute.triggered.connect(self._toggle_mute)
             act_quit.triggered.connect(self._tray_quit)
-            for a in (act_show, act_camon, act_camoff, act_mute, act_quit):
+            for a in (act_show, act_camon, act_camoff, act_godseye, act_mute, act_quit):
                 menu.addAction(a)
             self._tray.setContextMenu(menu)
             self._tray.activated.connect(self._tray_activated)
@@ -1383,6 +1386,143 @@ class MainWindow(QMainWindow):
             )
         except Exception:
             pass
+
+    # ---- Video-on-HUD ("video where the face is", from Mark LV) ------------
+    # Uses a QGraphicsVideoItem (NOT a native QVideoWidget) so the HUD overlays
+    # stay on top of the picture. Built lazily: a missing QtMultimedia never
+    # blocks boot, and the import cost is paid only when a video is requested.
+    def _ensure_video_surface(self) -> bool:
+        if getattr(self, "_video_view", None) is not None:
+            return True
+        try:
+            from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+            from PyQt6.QtMultimediaWidgets import QGraphicsVideoItem
+            from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene
+        except Exception as e:
+            print(f"[UI] QtMultimedia unavailable ({e}) — video will open externally.")
+            self._log.append_log("SYS: In-HUD video needs PyQt6 QtMultimedia; opening externally.")
+            return False
+
+        self._video_scene = QGraphicsScene(self)
+        self._video_item = QGraphicsVideoItem()
+        self._video_scene.addItem(self._video_item)
+
+        self._video_view = QGraphicsView(self._video_scene, self.centralWidget())
+        self._video_view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._video_view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._video_view.setFrameShape(QGraphicsView.Shape.NoFrame)
+        self._video_view.setStyleSheet("background: #000; border: none;")
+        self._video_view.hide()
+        self._video_view.viewport().installEventFilter(self)
+
+        self._video_player = QMediaPlayer(self)
+        self._video_audio = QAudioOutput(self)
+        self._video_player.setAudioOutput(self._video_audio)
+        self._video_player.setVideoOutput(self._video_item)
+        self._video_audio.setMuted(True)      # ALWAYS start muted
+        self._video_audio.setVolume(0.85)
+        self._video_forced_mic_mute = False
+
+        # header overlay — stays on top because it's a normal widget over the view
+        self._video_header = QWidget(self._video_view)
+        hl = QHBoxLayout(self._video_header)
+        hl.setContentsMargins(12, 6, 12, 6)
+        self._video_title = QLabel("")
+        self._video_title.setStyleSheet(f"color: {C.CYAN}; background: transparent; font-weight: 600;")
+        self._video_unmute_btn = QPushButton("🔇  Sound")
+        self._video_unmute_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._video_close_btn = QPushButton("✕")
+        self._video_close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._video_unmute_btn.clicked.connect(lambda: self._video_set_muted(not self._video_audio.isMuted()))
+        self._video_close_btn.clicked.connect(self.stop_video)
+        for b in (self._video_unmute_btn, self._video_close_btn):
+            b.setStyleSheet(f"""
+                QPushButton {{
+                    background: #001018; color: {C.CYAN};
+                    border: 1px solid {C.CYAN}; border-radius: 3px; padding: 4px 10px;
+                }}
+                QPushButton:hover {{ background: #00202b; }}
+            """)
+        hl.addWidget(self._video_title, stretch=1)
+        hl.addWidget(self._video_unmute_btn)
+        hl.addWidget(self._video_close_btn)
+        self._video_header.setStyleSheet(f"background: rgba(0, 8, 14, 200);")
+
+        # slot into the centre of the body (index 2 = after left panel + hud)
+        try:
+            self._body_layout.insertWidget(2, self._video_view, stretch=5)
+        except Exception:
+            self._body_layout.addWidget(self._video_view, stretch=5)
+        return True
+
+    def play_video(self, source: str, title: str = "") -> None:
+        if not self._ensure_video_surface():
+            return
+        from PyQt6.QtCore import QUrl
+        s = str(source)
+        url = QUrl(s) if s.startswith(("http://", "https://")) else QUrl.fromLocalFile(s)
+        self._video_title.setText(title or "Video")
+        self._video_player.setSource(url)
+        self._video_audio.setMuted(True)
+        self._style_video_unmute_btn()
+        self.hud.hide()
+        self._video_view.show()
+        self._video_view.raise_()
+        self._video_fit()
+        self._video_player.play()
+        self._log.append_log(f"SYS: ▶ “{title or 'video'}” in the HUD (muted).")
+
+    def stop_video(self) -> None:
+        if getattr(self, "_video_player", None) is None:
+            return
+        try:
+            self._video_player.stop()
+        except Exception:
+            pass
+        self._video_view.hide()
+        self.hud.show()
+        if getattr(self, "_video_forced_mic_mute", False):
+            self._video_forced_mic_mute = False
+            if self._muted:
+                self._toggle_mute()
+        self._log.append_log("SYS: Video stopped.")
+
+    def _video_set_muted(self, muted: bool) -> None:
+        self._video_audio.setMuted(muted)
+        self._style_video_unmute_btn()
+        if muted:
+            self._log.append_log("SYS: Video sound off.")
+            if getattr(self, "_video_forced_mic_mute", False):
+                self._video_forced_mic_mute = False
+                if self._muted:
+                    self._toggle_mute()
+        else:
+            # The film is audible now — mute the mic so JARVIS doesn't answer it.
+            self._log.append_log("SYS: Video sound on — mic muted so I don't hear the film.")
+            if not self._muted:
+                self._video_forced_mic_mute = True
+                self._toggle_mute()
+
+    def _style_video_unmute_btn(self) -> None:
+        muted = self._video_audio.isMuted()
+        self._video_unmute_btn.setText("🔇  Sound" if muted else "🔊  Sound on")
+
+    def _video_fit(self) -> None:
+        try:
+            from PyQt6.QtCore import QSizeF
+            vs = self._video_view.size()
+            self._video_item.setSize(QSizeF(max(vs.width() - 2, 2), max(vs.height() - 2, 2)))
+            self._video_view.fitInView(self._video_item, Qt.AspectRatioMode.KeepAspectRatio)
+            self._video_header.setGeometry(0, 0, vs.width(), 40)
+            self._video_header.raise_()
+        except Exception:
+            pass
+
+    def eventFilter(self, obj, event):
+        if getattr(self, "_video_view", None) is not None and obj is self._video_view.viewport() \
+                and event.type() == event.Type.Resize:
+            self._video_fit()
+        return super().eventFilter(obj, event)
 
     def _toggle_fullscreen(self):
         if self.isFullScreen():
@@ -1838,3 +1978,9 @@ class JarvisUI:
     def stop_speaking(self):
         if not self.muted:
             self.set_state("LISTENING")
+
+    def play_video(self, source: str, title: str = ""):
+        self._win.play_video(source, title=title)
+
+    def stop_video(self):
+        self._win.stop_video()

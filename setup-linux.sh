@@ -15,7 +15,13 @@ sudo apt install -y \
     xdotool wmctrl \
     brightnessctl \
     libnotify-bin \
-    libgl1 libglib2.0-0
+    libgl1 libglib2.0-0 \
+    ffmpeg \
+    gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav \
+    gstreamer1.0-tools \
+    qt6-multimedia-dev \
+    nodejs npm
 
 echo "==> [2/4] Creating virtual environment…"
 python3 -m venv venv
@@ -33,10 +39,17 @@ cat <<'EOF'
 
 ✅  Setup complete!
 
-   Run it with:
+   Run it once with:
        source venv/bin/activate
        python main.py
 
+   …or make JARVIS always-on (auto-start on login + system tray):
+       bash scripts/install_autostart.sh
+
    First launch will ask for your Gemini + OpenRouter API keys
    (they are stored locally in config/api_keys.json and never committed).
+
+   New in this build:
+     • Say "play <anything>" to watch video right in the HUD (muted; ask to unmute).
+     • Say "open god's eye" for the live 3D world-data globe (first run installs it).
 EOF
