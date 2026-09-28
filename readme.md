@@ -18,7 +18,7 @@ A real-time voice AI that can hear, see, understand, and control your computer �
 ```bash
 bash setup-linux.sh          # installs system libs + python deps + playwright
 source venv/bin/activate
-python main.py
+python main.py               # one-off run (Ctrl+C to quit)
 ```
 
 ### 🪟 Windows / 🍎 macOS
@@ -29,6 +29,35 @@ pip install -r requirements.txt
 python -m playwright install
 python main.py
 ```
+
+## 🚀 Always-On — auto-start on login + live in the tray (Linux)
+
+Make JARVIS a **Google-Assistant-style, always-there** companion that starts when
+you log in and sits in the system tray (click the tray icon to summon the window,
+right-click for Start/Stop camera, mute, quit):
+
+```bash
+bash scripts/install_autostart.sh            # enable always-on
+bash scripts/install_autostart.sh --uninstall  # remove it again
+```
+
+This installs:
+| What | Where |
+|------|-------|
+| Login auto-start | `~/.config/autostart/jarvis.desktop` |
+| `jarvis` command (run anytime) | `~/.local/bin/jarvis` |
+| App-menu launcher | `~/.local/share/applications/jarvis.desktop` |
+| Optional crash-restart service | `~/.config/systemd/user/jarvis.service` (see below) |
+
+- After install, log out/in once (or run `jarvis`) — JARVIS starts automatically.
+- Closing the window **hides it to the tray**, it does not quit. Quit from the tray menu.
+- Want it to auto-restart if it ever crashes? `bash scripts/install_autostart.sh --service`
+  then `systemctl --user enable --now jarvis.service`.
+
+> 🎙️ **Honest scope note:** the tray icon is the reliable "summon" path. A
+> *global hotkey that works while hidden* and an on-device *"Hey JARVIS"* wake word
+> are **not** bundled — they need extra native deps (`pynput` / `openWakeWord`) and
+> extra RAM, so they were left out of the low-RAM default.
 
 There is a **single `requirements.txt`** for every OS. Windows-only packages
 (`comtypes`, `pycaw`, `win10toast`, `pywinauto`) are gated with environment markers,

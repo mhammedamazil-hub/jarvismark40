@@ -171,15 +171,22 @@ Return ONLY the Python code, no explanation."""
         code = response.text.strip()
         code = re.sub(r"```(?:python)?", "", code).strip().rstrip("`").strip()
 
+        # code_helper's "run" action executes a FILE, not inline code — so write
+        # the fix to a temp .py and point the step at it.
+        import tempfile
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False, encoding="utf-8"
+        ) as tf:
+            tf.write(code)
+            fixed_path = tf.name
+
         return {
             "step":        step.get("step"),
             "tool":        "code_helper",
             "description": f"Auto-fix for: {step.get('description')}",
             "parameters": {
-                "action":      "run",
-                "description": fix_suggestion,
-                "code":        code,
-                "language":    "python"
+                "action":    "run",
+                "file_path": fixed_path,
             },
             "depends_on": step.get("depends_on", []),
             "critical":   step.get("critical", False)

@@ -19,13 +19,13 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtGui import (
     QBrush, QColor, QDragEnterEvent, QDropEvent, QFont, QFontDatabase,
-    QKeySequence, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap,
+    QIcon, QKeySequence, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap,
     QRadialGradient, QShortcut,
 )
 from PyQt6.QtWidgets import (
     QApplication, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
-    QMainWindow, QPushButton, QScrollArea, QSizePolicy, QTextEdit,
-    QVBoxLayout, QWidget, QProgressBar,
+    QMainWindow, QPushButton, QScrollArea, QSizePolicy, QSystemTrayIcon,
+    QTextEdit, QVBoxLayout, QWidget, QProgressBar, QMenu, QAction, QStyle,
 )
 
 def _base_dir() -> Path:
@@ -1309,6 +1309,80 @@ class MainWindow(QMainWindow):
         sc_mute.activated.connect(self._toggle_mute)
         sc_full = QShortcut(QKeySequence("F11"), self)
         sc_full.activated.connect(self._toggle_fullscreen)
+
+        self._tray = None
+        self._force_quit = False
+        self._setup_tray()
+
+    def _setup_tray(self):
+        """System-tray presence so JARVIS stays alive in the background."""
+        try:
+            icon = QIcon(str(BASE_DIR / "face.png"))
+            if icon.isNull():
+                icon = self.style().standardIcon(QStyle.SP_ComputerIcon)
+            self._tray = QSystemTrayIcon(icon, self)
+            self._tray.setToolTip("J.A.R.V.I.S — online")
+
+            menu = QMenu()
+            act_show  = QAction("Show / Hide", self)
+            act_camon = QAction("Start camera", self)
+            act_camoff= QAction("Stop camera", self)
+            act_mute  = QAction("Toggle mute", self)
+            act_quit  = QAction("Quit JARVIS", self)
+            act_show.triggered.connect(self._tray_toggle_window)
+            act_camon.triggered.connect(lambda: self._run_cmd("start camera"))
+            act_camoff.triggered.connect(lambda: self._run_cmd("stop camera"))
+            act_mute.triggered.connect(self._toggle_mute)
+            act_quit.triggered.connect(self._tray_quit)
+            for a in (act_show, act_camon, act_camoff, act_mute, act_quit):
+                menu.addAction(a)
+            self._tray.setContextMenu(menu)
+            self._tray.activated.connect(self._tray_activated)
+            self._tray.show()
+        except Exception as e:
+            print(f"[UI] system tray unavailable: {e}")
+            self._tray = None
+
+    def _run_cmd(self, text: str):
+        cb = getattr(self, "on_text_command", None)
+        if callable(cb):
+            try:
+                cb(text)
+            except Exception as e:
+                print(f"[UI] tray command failed: {e}")
+
+    def _tray_toggle_window(self):
+        if self.isVisible():
+            self.hide()
+        else:
+            self.showNormal()
+            self.raise_()
+            self.activateWindow()
+
+    def _tray_activated(self, reason):
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            self._tray_toggle_window()
+
+    def _tray_quit(self):
+        self._force_quit = True
+        self.close()
+        QApplication.quit()
+
+    def closeEvent(self, event):
+        # Minimise to tray instead of quitting — keeps JARVIS "always there".
+        if getattr(self, "_force_quit", False) or self._tray is None:
+            event.accept()
+            return
+        event.ignore()
+        self.hide()
+        try:
+            self._tray.showMessage(
+                "J.A.R.V.I.S",
+                "Still running in the background. Click the tray icon to bring me back.",
+                QSystemTrayIcon.MessageIcon.Information, 2500,
+            )
+        except Exception:
+            pass
 
     def _toggle_fullscreen(self):
         if self.isFullScreen():
