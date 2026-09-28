@@ -81,6 +81,13 @@ so they are installed on Windows and automatically skipped on Linux/macOS.
 - **🪜 Model ladder** — every one-shot Gemini call now runs through a measured
   ladder of models with timeouts + cooldowns (`core/gemini.py`), so a quota hit or
   an outage steps to the next model instead of hanging or failing.
+- **💼 Business outreach** (`outreach`) — a *legal* assistant for landing ad /
+  poster / website clients: it keeps a prospect list, writes a **personalised**
+  pitch for each business with the LLM, and sends them **one at a time** with a
+  daily cap and human-like delays. **Email first** (identified, with an opt-out),
+  then WhatsApp/Telegram/LinkedIn. It always drafts and waits for your approval.
+  Say *"outreach status"*, *"outreach draft"*, *"outreach send"*. Configure your
+  studio + SMTP in `~/.jarvis/outreach/config.json`.
 
 ---
 

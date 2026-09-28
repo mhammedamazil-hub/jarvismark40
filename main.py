@@ -36,6 +36,7 @@ from actions.computer_control  import computer_control
 from actions.game_updater      import game_updater
 from actions.video_player      import play_video, stop_video
 from actions.gods_eye          import gods_eye
+from actions.outreach          import outreach
 
 
 def get_base_dir():
@@ -160,6 +161,34 @@ TOOL_DECLARATIONS = [
             "properties": {
                 "action": {"type": "STRING", "description": "open (default) or stop"}
             }
+        }
+    },
+    {
+        "name": "outreach",
+        "description": (
+            "The user's business outreach assistant (ads / posters / websites). Manages "
+            "a prospect list, writes a PERSONALISED pitch for each business with the "
+            "LLM, and sends them ONE at a time with a daily cap and human-like delays. "
+            "Email first, then WhatsApp/Telegram/LinkedIn; Instagram only if the user "
+            "insists (it risks a ban). Always drafts and asks for approval before "
+            "sending. Actions: add, status, draft, queue, send, send_all, followup."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {"type": "STRING", "description": "add | status | draft | queue | send | send_all | followup"},
+                "prospects": {"type": "ARRAY", "items": {"type": "OBJECT"},
+                              "description": "For 'add': list of {business, contact, handle, email, channel, notes}"},
+                "business": {"type": "STRING"},
+                "contact":  {"type": "STRING"},
+                "handle":   {"type": "STRING"},
+                "email":    {"type": "STRING"},
+                "channel":  {"type": "STRING", "description": "email | whatsapp | telegram | instagram | linkedin"},
+                "notes":    {"type": "STRING", "description": "A specific detail about them, for personalisation"},
+                "count":    {"type": "INTEGER", "description": "For 'queue': how many to draft"},
+                "confirmed": {"type": "BOOLEAN", "description": "For 'send_all': the user explicitly approved"}
+            },
+            "required": ["action"]
         }
     },
     {
@@ -875,6 +904,10 @@ class JarvisLive:
             elif name == "gods_eye":
                 r = await loop.run_in_executor(None, lambda: gods_eye(parameters=args, player=self.ui, speak=self.speak))
                 result = r or "God's Eye launching."
+
+            elif name == "outreach":
+                r = await loop.run_in_executor(None, lambda: outreach(parameters=args, player=self.ui, speak=self.speak))
+                result = r or "Outreach done."
 
             elif name == "shutdown_jarvis":
                 self.ui.write_log("SYS: Shutdown requested.")

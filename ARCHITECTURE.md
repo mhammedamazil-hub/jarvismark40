@@ -49,6 +49,9 @@ actions/           One file = one capability. Each exposes an async/sync entry t
     desktop.py         desktop / taskbar / window operations + AI desktop tasks.
     browser_control.py open/navigate the browser.
     send_message.py    WhatsApp / Telegram messaging.
+    outreach.py        LEGAL business-outreach assistant: prospect store, LLM-written
+                       personalised pitches, human-in-the-loop send with a daily cap +
+                       delays (email first, then app DMs). Data in ~/.jarvis/outreach.
     reminder.py        reminders + Pomodoro timer (persisted).
     computer_use.py    AI-driven mouse/keyboard control (screen coords from AI).
     weather_report.py  live weather.
