@@ -6,10 +6,86 @@ import traceback
 import re
 from pathlib import Path
 
-import sounddevice as sd
+
+def _bootstrap() -> None:
+    """Make `python main.py` work after a plain download — no manual steps.
+
+    1) If the project has a venv/ and we're not already inside it, re-exec under
+       it, so installed deps are used WITHOUT `source venv/bin/activate`.
+    2) If there's no venv and required packages are missing, offer the one-time
+       setup (setup-linux.sh) or a pip install, then re-exec.
+    """
+    import os
+    import subprocess
+    import importlib.util
+
+    here = Path(__file__).resolve().parent
+    venv_dir = here / "venv"
+    venv_py = venv_dir / "bin" / "python"
+
+    # (1) prefer the project venv when it exists
+    if venv_py.exists():
+        try:
+            if Path(sys.prefix).resolve() != venv_dir.resolve():
+                print("[JARVIS] Launching inside the project virtual environment (venv/)…")
+                os.execv(str(venv_py), [str(venv_py), *sys.argv])
+        except Exception as e:
+            print(f"[JARVIS] Could not switch to venv ({e}); continuing with this interpreter.")
+        return  # already inside the venv
+
+    # (2) no venv — are the deps importable in this interpreter already?
+    required = ["sounddevice", "google.genai", "PyQt6.QtCore", "PyQt6.QtWidgets",
+                "requests", "psutil", "numpy", "PIL", "mss"]
+    missing = [m for m in required if importlib.util.find_spec(m) is None]
+    if not missing:
+        return
+
+    print("=" * 70)
+    print("  J.A.R.V.I.S — first-run setup")
+    print("  Missing Python packages: " + ", ".join(missing))
+    print("  One-time fix:  bash setup-linux.sh")
+    print("    (installs system libraries + Python deps into venv/; afterwards")
+    print("     `python main.py` just works)")
+    print("=" * 70)
+    try:
+        ans = input("  Run the automatic setup now? [Y/n] ").strip().lower()
+    except EOFError:
+        ans = "y"
+    if ans in ("", "y", "yes"):
+        setup = here / "setup-linux.sh"
+        try:
+            if setup.exists():
+                subprocess.call(["bash", str(setup)])
+                if venv_py.exists():
+                    print("\n[JARVIS] Setup done — relaunching inside the new venv…")
+                    os.execv(str(venv_py), [str(venv_py), *sys.argv])
+            else:
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "-r",
+                                       str(here / "requirements.txt")])
+                os.execv(sys.executable, [sys.executable, *sys.argv])
+        except Exception as e:
+            print(f"[JARVIS] Automatic setup failed: {e}")
+    print("\n[JARVIS] Please run:  bash setup-linux.sh   then:  python main.py")
+    sys.exit(1)
+
+
+_bootstrap()
+
+try:
+    import sounddevice as sd
+except Exception as _e:  # noqa: BLE001 - usually a missing system lib (PortAudio)
+    print("[JARVIS] Audio backend failed to load "
+          f"({_e}).\n         Install the system library:  bash setup-linux.sh")
+    sys.exit(1)
+
 from google import genai
 from google.genai import types
-from ui import JarvisUI
+try:
+    from ui import JarvisUI
+except Exception as _e:  # noqa: BLE001 - usually missing Qt system libraries
+    print("[JARVIS] The interface failed to load "
+          f"({_e}).\n         Install the system libraries:  bash setup-linux.sh")
+    sys.exit(1)
 from memory.memory_manager import (
     load_memory, update_memory, format_memory_for_prompt,
     should_extract_memory, extract_memory
@@ -37,6 +113,7 @@ from actions.game_updater      import game_updater
 from actions.video_player      import play_video, stop_video
 from actions.gods_eye          import gods_eye
 from actions.outreach          import outreach
+from actions.prospector        import prospector
 
 
 def get_base_dir():
@@ -189,6 +266,27 @@ TOOL_DECLARATIONS = [
                 "confirmed": {"type": "BOOLEAN", "description": "For 'send_all': the user explicitly approved"}
             },
             "required": ["action"]
+        }
+    },
+    {
+        "name": "prospector",
+        "description": (
+            "Finds local-business LEADS for outreach using the free OpenStreetMap "
+            "database. Give a niche and an area (e.g. 'cafes in Kochi', 'gyms in "
+            "Kozhikode'); it returns businesses there and auto-loads the ones with "
+            "NO website into your outreach list — those are prime prospects. Use "
+            "when the user wants to find businesses to pitch ads/posters/websites to."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "niche": {"type": "STRING", "description": "cafes | gyms | salons | restaurants | bakeries | clinics | …"},
+                "area":  {"type": "STRING", "description": "City / area, e.g. 'Kochi'"},
+                "radius_km": {"type": "NUMBER", "description": "Search radius in km (default 5)"},
+                "limit": {"type": "INTEGER", "description": "Max businesses to fetch (default 50)"},
+                "only_no_website": {"type": "BOOLEAN", "description": "Keep only businesses with no website (default true)"}
+            },
+            "required": ["niche", "area"]
         }
     },
     {
@@ -908,6 +1006,10 @@ class JarvisLive:
             elif name == "outreach":
                 r = await loop.run_in_executor(None, lambda: outreach(parameters=args, player=self.ui, speak=self.speak))
                 result = r or "Outreach done."
+
+            elif name == "prospector":
+                r = await loop.run_in_executor(None, lambda: prospector(parameters=args, player=self.ui, speak=self.speak))
+                result = r or "Prospecting done."
 
             elif name == "shutdown_jarvis":
                 self.ui.write_log("SYS: Shutdown requested.")

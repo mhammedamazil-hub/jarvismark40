@@ -52,6 +52,9 @@ actions/           One file = one capability. Each exposes an async/sync entry t
     outreach.py        LEGAL business-outreach assistant: prospect store, LLM-written
                        personalised pitches, human-in-the-loop send with a daily cap +
                        delays (email first, then app DMs). Data in ~/.jarvis/outreach.
+    prospector.py      finds local-business LEADS via free OpenStreetMap
+                       (Nominatim + Overpass); flags businesses with NO website and
+                       loads them into the outreach list.
     reminder.py        reminders + Pomodoro timer (persisted).
     computer_use.py    AI-driven mouse/keyboard control (screen coords from AI).
     weather_report.py  live weather.

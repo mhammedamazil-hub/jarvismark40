@@ -16,10 +16,12 @@ A real-time voice AI that can hear, see, understand, and control your computer �
 
 ### 🐧 Linux (Mint / Ubuntu / Debian) — recommended
 ```bash
-bash setup-linux.sh          # installs system libs + python deps + playwright
-source venv/bin/activate
-python main.py               # one-off run (Ctrl+C to quit)
+bash setup-linux.sh          # ONE-TIME: system libs + python deps + playwright
+python main.py               # just run it — it auto-uses venv/, no activate needed
 ```
+> After the one-time `setup-linux.sh`, `python main.py` works on its own: it
+> detects the project `venv/` and re-launches inside it automatically. On a fresh
+> download with nothing installed yet, it offers to run the setup for you.
 
 ### 🪟 Windows / 🍎 macOS
 ```bash
@@ -88,6 +90,10 @@ so they are installed on Windows and automatically skipped on Linux/macOS.
   then WhatsApp/Telegram/LinkedIn. It always drafts and waits for your approval.
   Say *"outreach status"*, *"outreach draft"*, *"outreach send"*. Configure your
   studio + SMTP in `~/.jarvis/outreach/config.json`.
+- **🔭 Prospector** (`prospector`) — say *"find cafes in Kochi"* and it pulls every
+  matching business from the free OpenStreetMap database, flags the ones with **no
+  website** as prime leads, and loads them straight into your outreach list. No API
+  key needed.
 
 ---
 
