@@ -30,10 +30,13 @@ class MainActivity : Activity() {
     private lateinit var btnBubble: Button
     private lateinit var btnStart: Button
     private lateinit var btnStop: Button
+    private lateinit var btnVoice: Button
+    private lateinit var switchVoice: Switch
     private lateinit var txtLog: TextView
     private val handler = Handler(Looper.getMainLooper())
     private var lastLogCount = -1
     private val prefs by lazy { getSharedPreferences("jarvis", Context.MODE_PRIVATE) }
+    private val voice: VoicePlugin? get() = PluginRegistry.firstOfType(VoicePlugin::class.java)
 
     private val poller = object : Runnable {
         override fun run() { refreshA11y(); refreshLog(); handler.postDelayed(this, 500) }
@@ -52,7 +55,13 @@ class MainActivity : Activity() {
         btnBubble = findViewById(R.id.btnBubble)
         btnStart = findViewById(R.id.btnStart)
         btnStop = findViewById(R.id.btnStop)
+        btnVoice = findViewById(R.id.btnVoice)
+        switchVoice = findViewById(R.id.switchVoice)
         txtLog = findViewById(R.id.txtLog)
+
+        // Boot the plugin system (voice first; camera/live are future plugins).
+        BuiltinPlugins.install(this)
+        PluginRegistry.init(this)
 
         spinnerProvider.adapter = ArrayAdapter(
             this, android.R.layout.simple_spinner_dropdown_item, listOf("OpenRouter", "Gemini")
@@ -80,9 +89,15 @@ class MainActivity : Activity() {
         btnStop.setOnClickListener { stopService(Intent(this, AgentService::class.java)) }
         switchConfirm.setOnCheckedChangeListener { _, on -> prefs.edit().putBoolean("confirmSend", on).apply() }
 
+        // Voice: push-to-talk to give a goal hands-free, and a toggle for spoken replies.
+        switchVoice.isChecked = true
+        switchVoice.setOnCheckedChangeListener { _, on -> voice?.repliesEnabled = on }
+        btnVoice.setOnClickListener { speakGoal() }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
         }
+        requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 2)
 
         // Launched from the floating bubble with a goal -> run it straight away.
         intent?.getStringExtra("goal")?.let { g ->
@@ -144,6 +159,26 @@ class MainActivity : Activity() {
         }
         startService(Intent(this, BubbleService::class.java))
         btnBubble.text = "Hide floating bubble"
+    }
+
+    /** Push-to-talk: hear a goal, fill the box, and start JARVIS on it. */
+    private fun speakGoal() {
+        val v = voice ?: run { AgentBus.log("🎙 Voice plugin not ready"); return }
+        v.speak("Listening")
+        btnVoice.text = "🎙 Listening…"
+        v.listen(
+            onResult = { said ->
+                btnVoice.text = "🎙 Speak goal"
+                edtGoal.setText(said)
+                v.speak("Got it. Starting.")
+                if (isAccessibilityEnabled()) requestCapture()
+                else AgentBus.log("🎙 Heard: $said — enable the Controller first")
+            },
+            onError = { err ->
+                btnVoice.text = "🎙 Speak goal"
+                AgentBus.log("🎙 $err")
+            }
+        )
     }
 
     private fun requestCapture() {

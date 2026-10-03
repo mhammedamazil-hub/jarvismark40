@@ -72,6 +72,7 @@ class AgentService : Service() {
     private suspend fun runLoop(goal: String, key: String, model: String, provider: String, confirmSend: Boolean) {
         val a11y = JarvisAccessibilityService.instance
         if (a11y == null) { AgentBus.log("✖ Accessibility Controller not enabled."); finish(); return }
+        val voice = PluginRegistry.firstOfType(VoicePlugin::class.java)
         val history = StringBuilder()
         var done = false
         var lastSig = ""
@@ -84,9 +85,15 @@ class AgentService : Service() {
                 val tag = buildString { if (it.clickable) append("[tap] "); if (it.editable) append("[edit] ") }
                 "$tag'${it.text}' @(${it.cx},${it.cy})"
             }
+            // Give every plugin a chance to add vision (camera), context, or a spoken line.
+            val contrib = PluginRegistry.onFrame(AgentFrame(goal, step, shot, summary, history.toString()))
+            contrib.speak?.let { voice?.speak(it) }
             val action = try {
                 withContext(Dispatchers.IO) {
-                    ModelClient.decide(provider, key, model, goal, shot, summary, history.toString())
+                    ModelClient.decide(
+                        provider, key, model, goal, shot, summary, history.toString(),
+                        extraImages = contrib.visionB64, pluginContext = contrib.context
+                    )
                 }
             } catch (e: Exception) {
                 AgentBus.log("⚠ model error: ${e.message}")
@@ -112,6 +119,7 @@ class AgentService : Service() {
                     action.app.isNotBlank() -> "${action.action} ${action.app}"
                     else -> "${action.action} (${action.reason.take(40)})"
                 }
+                voice?.speak("JARVIS wants to $label. Proceed?")
                 val ok = OverlayBridge.confirm("JARVIS wants to $label. Proceed?")
                 if (!ok) {
                     AgentBus.log("⛔ You declined: ${action.action}. Skipping.")
@@ -138,6 +146,7 @@ class AgentService : Service() {
             delay(1500)
         }
         if (!done) AgentBus.log("⏹ Stopped (step limit reached).")
+        voice?.speak(if (done) "Goal complete." else "Stopped.")
         OverlayBridge.status(done.toString().let { if (done) "Done ✅" else "Stopped" })
         finish()
     }

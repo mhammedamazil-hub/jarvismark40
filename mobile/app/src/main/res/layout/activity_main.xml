@@ -8,6 +8,8 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:maxWidth="@dimen/column_max_width"
         android:orientation="vertical">
 
         <TextView
@@ -85,6 +87,15 @@
             android:textColor="#E0F7FA"
             android:checked="true" />
 
+        <Switch
+            android:id="@+id/switchVoice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="🔊 JARVIS speaks its replies"
+            android:textColor="#E0F7FA"
+            android:checked="true" />
+
         <Button
             android:id="@+id/btnBubble"
             android:layout_width="match_parent"
@@ -102,6 +113,13 @@
             android:hint="Goal — e.g. Open WhatsApp, message Ravi 'on my way'"
             android:textColor="#E0F7FA"
             android:textColorHint="#5A6E72" />
+
+        <Button
+            android:id="@+id/btnVoice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="🎙 Speak goal (push to talk)" />
 
         <Button
             android:id="@+id/btnStart"

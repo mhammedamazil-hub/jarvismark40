@@ -60,20 +60,28 @@ object ModelClient {
         goal: String,
         screenshotB64: String?,
         screenSummary: String,
-        history: String
+        history: String,
+        extraImages: List<String> = emptyList(),   // extra vision from plugins (e.g. camera)
+        pluginContext: String? = null              // extra prompt text from plugins
     ): AgentAction {
         val url = if (provider.equals("gemini", true)) GEMINI_URL else OPENROUTER_URL
         val userText = buildString {
             append("GOAL: ").append(goal).append('\n')
             if (history.isNotBlank()) append("HISTORY: ").append(history).append('\n')
+            if (!pluginContext.isNullOrBlank()) append("PLUGINS: ").append(pluginContext).append('\n')
             append("SCREEN ELEMENTS (centre x,y):\n").append(screenSummary.ifBlank { "(none readable)" })
         }
         val parts = JSONArray()
         parts.put(JSONObject().apply { put("type", "text"); put("text", userText) })
-        if (screenshotB64 != null) {
+        // Primary screenshot first, then any plugin-supplied vision (camera, etc).
+        val images = buildList {
+            screenshotB64?.let { add(it) }
+            addAll(extraImages)
+        }
+        for (b64 in images) {
             parts.put(JSONObject().apply {
                 put("type", "image_url")
-                put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$screenshotB64"))
+                put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$b64"))
             })
         }
         val messages = JSONArray().apply {

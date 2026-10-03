@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Phones: no practical cap, the column just fills the width. -->
+    <dimen name="column_max_width">10000dp</dimen>
+</resources>
