@@ -19,10 +19,9 @@ data class AgentAction(
 )
 
 /**
- * Talks to a vision model to decide each step. Two providers, same request shape:
- *   • openrouter — https://openrouter.ai/api/v1/chat/completions (any cheap VLM)
- *   • gemini     — Google's OpenAI-compatible endpoint (generativelanguage…/openai/)
- * You pick provider + key + model in the app.
+ * Talks to a vision model to decide each step, and to answer questions. Provider-agnostic:
+ * pick a provider id (see [Providers]) + key + model. Handles both OpenAI-compatible APIs and
+ * Anthropic's Messages API.
  */
 object ModelClient {
     private val client = OkHttpClient.Builder()
@@ -31,10 +30,6 @@ object ModelClient {
         .callTimeout(90, TimeUnit.SECONDS)
         .build()
     private val JSON = "application/json; charset=utf-8".toMediaType()
-
-    private const val OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-    private const val GEMINI_URL =
-        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 
     private val SYSTEM = """
         You are JARVIS, an agent controlling an Android phone. You are shown a GOAL,
@@ -62,111 +57,98 @@ object ModelClient {
         can't see something, say so plainly. Be warm and a little like Tony Stark's JARVIS.
     """.trimIndent()
 
+    /** Decide the single next device action for a goal. */
     fun decide(
-        provider: String,
+        providerId: String,
         apiKey: String,
         model: String,
         goal: String,
         screenshotB64: String?,
         screenSummary: String,
         history: String,
-        extraImages: List<String> = emptyList(),   // extra vision from plugins (e.g. camera)
-        pluginContext: String? = null              // extra prompt text from plugins
+        extraImages: List<String> = emptyList(),
+        pluginContext: String? = null
     ): AgentAction {
-        val url = if (provider.equals("gemini", true)) GEMINI_URL else OPENROUTER_URL
+        val p = Providers.byId(providerId)
         val userText = buildString {
             append("GOAL: ").append(goal).append('\n')
             if (history.isNotBlank()) append("HISTORY: ").append(history).append('\n')
             if (!pluginContext.isNullOrBlank()) append("PLUGINS: ").append(pluginContext).append('\n')
             append("SCREEN ELEMENTS (centre x,y):\n").append(screenSummary.ifBlank { "(none readable)" })
         }
-        val parts = JSONArray()
-        parts.put(JSONObject().apply { put("type", "text"); put("text", userText) })
-        // Primary screenshot first, then any plugin-supplied vision (camera, etc).
-        val images = buildList {
-            screenshotB64?.let { add(it) }
-            addAll(extraImages)
+        val images = if (p.vision) buildList { screenshotB64?.let { add(it) }; addAll(extraImages) } else emptyList()
+        val raw = complete(p, apiKey, model, SYSTEM, userText, images, 300)
+        return parse(raw)
+    }
+
+    /** Conversational vision Q&A — returns plain text for JARVIS to speak. */
+    fun ask(providerId: String, apiKey: String, model: String, prompt: String, images: List<String> = emptyList()): String {
+        val p = Providers.byId(providerId)
+        val imgs = if (p.vision) images else emptyList()
+        val raw = complete(p, apiKey, model, LIVE_SYSTEM, prompt, imgs, 400)
+        if (raw.startsWith("[HTTP")) return "I couldn't reach my brain — check the key and connection."
+        return raw.ifBlank { "I didn't catch that." }
+    }
+
+    /** One request/response across API styles. Returns assistant text, or an "[HTTP …]" error. */
+    private fun complete(
+        p: Provider, key: String, model: String,
+        system: String, userText: String, images: List<String>, maxTokens: Int
+    ): String {
+        val isAnthropic = p.apiStyle == ApiStyle.ANTHROPIC
+        val body: JSONObject
+        if (isAnthropic) {
+            val content = JSONArray().apply {
+                put(JSONObject().put("type", "text").put("text", userText))
+                for (b64 in images) put(JSONObject().put("type", "image").put(
+                    "source", JSONObject().put("type", "base64")
+                        .put("media_type", "image/jpeg").put("data", b64)))
+            }
+            body = JSONObject().apply {
+                put("model", model); put("max_tokens", maxTokens); put("system", system)
+                put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", content)))
+            }
+        } else {
+            val parts = JSONArray().apply {
+                put(JSONObject().put("type", "text").put("text", userText))
+                for (b64 in images) parts.put(JSONObject().put("type", "image_url").put(
+                    "image_url", JSONObject().put("url", "data:image/jpeg;base64,$b64")))
+            }
+            body = JSONObject().apply {
+                put("model", model)
+                put("messages", JSONArray().apply {
+                    put(JSONObject().put("role", "system").put("content", system))
+                    put(JSONObject().put("role", "user").put("content", parts))
+                })
+                put("temperature", 0.2); put("max_tokens", maxTokens)
+            }
         }
-        for (b64 in images) {
-            parts.put(JSONObject().apply {
-                put("type", "image_url")
-                put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$b64"))
-            })
-        }
-        val messages = JSONArray().apply {
-            put(JSONObject().apply { put("role", "system"); put("content", SYSTEM) })
-            put(JSONObject().apply { put("role", "user"); put("content", parts) })
-        }
-        val payload = JSONObject().apply {
-            put("model", model)
-            put("messages", messages)
-            put("temperature", 0.2)
-            put("max_tokens", 300)
-        }
-        val req = Request.Builder()
-            .url(url)
-            .header("Authorization", "Bearer $apiKey")
-            .post(payload.toString().toRequestBody(JSON))
-            .build()
+        val req = Request.Builder().url(p.url).apply {
+            if (isAnthropic) header("x-api-key", key) else header("Authorization", "Bearer $key")
+            p.extraHeaders.forEach { (k, v) -> header(k, v) }
+            post(body.toString().toRequestBody(JSON))
+        }.build()
         client.newCall(req).execute().use { resp ->
             val s = resp.body?.string() ?: ""
-            if (!resp.isSuccessful) {
-                return AgentAction("wait", reason = "HTTP ${resp.code}: ${s.take(160)}")
-            }
-            val content = try {
-                JSONObject(s).getJSONArray("choices").getJSONObject(0)
-                    .getJSONObject("message").optString("content")
-            } catch (e: Exception) { "" }
-            return parse(content)
+            if (!resp.isSuccessful) return "[HTTP ${resp.code}] ${s.take(160)}"
+            return if (isAnthropic) parseAnthropic(s) else parseOpenAI(s)
         }
     }
 
-    /**
-     * Conversational vision Q&A — the engine behind "Live" (instant answers) and the
-     * camera "look" flow. Unlike [decide] (which returns one device action), this returns
-     * plain text the user hears. You may pass extra images (e.g. a camera frame).
-     */
-    fun ask(
-        provider: String,
-        apiKey: String,
-        model: String,
-        prompt: String,
-        images: List<String> = emptyList()
-    ): String {
-        val url = if (provider.equals("gemini", true)) GEMINI_URL else OPENROUTER_URL
-        val parts = JSONArray()
-        parts.put(JSONObject().apply { put("type", "text"); put("text", prompt) })
-        for (b64 in images) {
-            parts.put(JSONObject().apply {
-                put("type", "image_url")
-                put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$b64"))
-            })
+    private fun parseOpenAI(s: String): String = try {
+        JSONObject(s).getJSONArray("choices").getJSONObject(0)
+            .getJSONObject("message").optString("content")
+    } catch (e: Exception) { "" }
+
+    private fun parseAnthropic(s: String): String = try {
+        val arr = JSONObject(s).getJSONArray("content")
+        val sb = StringBuilder()
+        for (i in 0 until arr.length()) {
+            val b = arr.getJSONObject(i)
+            if (b.optString("type") == "text") sb.append(b.optString("text"))
         }
-        val messages = JSONArray().apply {
-            put(JSONObject().apply { put("role", "system"); put("content", LIVE_SYSTEM) })
-            put(JSONObject().apply { put("role", "user"); put("content", parts) })
-        }
-        val payload = JSONObject().apply {
-            put("model", model)
-            put("messages", messages)
-            put("temperature", 0.4)
-            put("max_tokens", 400)
-        }
-        val req = Request.Builder()
-            .url(url)
-            .header("Authorization", "Bearer $apiKey")
-            .post(payload.toString().toRequestBody(JSON))
-            .build()
-        client.newCall(req).execute().use { resp ->
-            val s = resp.body?.string() ?: ""
-            if (!resp.isSuccessful) return "I couldn't reach my brain (HTTP ${resp.code})."
-            val content = try {
-                JSONObject(s).getJSONArray("choices").getJSONObject(0)
-                    .getJSONObject("message").optString("content")
-            } catch (e: Exception) { "" }
-            return content.ifBlank { "I didn't catch that." }
-        }
-    }
+        sb.toString()
+    } catch (e: Exception) { "" }
 
     private fun parse(raw: String): AgentAction {
         val cleaned = raw.trim()

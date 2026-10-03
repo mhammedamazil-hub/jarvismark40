@@ -13,14 +13,16 @@ welcome on any of it.
 - **Floating bubble** — give a goal from inside any app.
 - **Confirm-before-send** — JARVIS asks before it types/sends/pays/deletes.
 - **Voice** — push-to-talk goals; JARVIS speaks replies + confirmations.
+- **Wake word** — hands-free "Yo JARVIS…" routes to screen / camera / general answers.
 - **Camera plugin** — "look at what I'm showing you" (front/back, on-demand frame).
 - **Live plugin** — instant see-screen(+camera)-and-answer, spoken.
+- **9 providers** — OpenRouter, Gemini, OpenAI, NVIDIA NIM, Anthropic, Groq, Together, Mistral, DeepSeek.
+- **HUD UI** — animated arc-reactor background + neon controls (Iron-Man grade).
 - **Plugin architecture** — a feature is one `JarvisPlugin` + one line.
 - **Phone + tablet** — responsive, scrolling layout.
 
 ## 🔜 Next (great first contributions)
 
-- **Wake word** — hands-free "Hey JARVIS" (opt-in; RAM-aware on low-end devices).
 - **Memory / recall** — remember preferences and past goals (persisted, on-device).
 - **Scheduled goals** — "every morning at 8, open X and …" (WorkManager).
 - **Remote dashboard** — control from a laptop/browser over local network (QR pair).

@@ -35,6 +35,9 @@ class MainActivity : Activity() {
     private lateinit var btnAsk: Button
     private lateinit var btnLook: Button
     private lateinit var switchBackCam: Switch
+    private lateinit var switchWake: Switch
+    private lateinit var switchSpeakSteps: Switch
+    private lateinit var txtStatus: TextView
     private lateinit var txtLog: TextView
     private val handler = Handler(Looper.getMainLooper())
     private var lastLogCount = -1
@@ -42,9 +45,10 @@ class MainActivity : Activity() {
     private val voice: VoicePlugin? get() = PluginRegistry.firstOfType(VoicePlugin::class.java)
     private val live: LivePlugin? get() = PluginRegistry.firstOfType(LivePlugin::class.java)
     private val cam: CameraPlugin? get() = PluginRegistry.firstOfType(CameraPlugin::class.java)
+    private val wake: WakeWordPlugin? get() = PluginRegistry.firstOfType(WakeWordPlugin::class.java)
 
     private val poller = object : Runnable {
-        override fun run() { refreshA11y(); refreshLog(); handler.postDelayed(this, 500) }
+        override fun run() { refreshA11y(); refreshStatus(); refreshLog(); handler.postDelayed(this, 500) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,6 +69,9 @@ class MainActivity : Activity() {
         btnAsk = findViewById(R.id.btnAsk)
         btnLook = findViewById(R.id.btnLook)
         switchBackCam = findViewById(R.id.switchBackCam)
+        switchWake = findViewById(R.id.switchWake)
+        switchSpeakSteps = findViewById(R.id.switchSpeakSteps)
+        txtStatus = findViewById(R.id.txtStatus)
         txtLog = findViewById(R.id.txtLog)
 
         // Boot the plugin system (voice first; camera/live are future plugins).
@@ -72,21 +79,22 @@ class MainActivity : Activity() {
         PluginRegistry.init(this)
 
         spinnerProvider.adapter = ArrayAdapter(
-            this, android.R.layout.simple_spinner_dropdown_item, listOf("OpenRouter", "Gemini")
+            this, android.R.layout.simple_spinner_dropdown_item, Providers.all.map { it.label }
         )
-        val savedProvider = prefs.getString("provider", "OpenRouter") ?: "OpenRouter"
-        spinnerProvider.setSelection(if (savedProvider == "Gemini") 1 else 0)
+        val savedId = prefs.getString("provider", Providers.all[0].id)
+        spinnerProvider.setSelection(Providers.indexOf(savedId))
         edtKey.setText(prefs.getString("key", ""))
-        edtModel.setText(prefs.getString("model", defaultModelFor(savedProvider)))
-        edtKey.hint = if (savedProvider == "Gemini") "Google AI Studio key (AIza…)" else "OpenRouter API key (sk-or-…)"
+        edtModel.setText(prefs.getString("model", selectedProvider().defaultModel))
+        edtKey.hint = "${selectedProvider().keyHint}  (get one: ${selectedProvider().keyUrl})"
         switchConfirm.isChecked = prefs.getBoolean("confirmSend", true)
+        switchSpeakSteps.isChecked = prefs.getBoolean("speakSteps", false)
 
         spinnerProvider.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p: AdapterView<*>?, v: android.view.View?, pos: Int, id: Long) {
-                val prov = if (pos == 1) "Gemini" else "OpenRouter"
-                edtModel.setText(defaultModelFor(prov))
-                edtKey.hint = if (prov == "Gemini") "Google AI Studio key (AIza…)" else "OpenRouter API key (sk-or-…)"
-                prefs.edit().putString("provider", prov).apply()
+                val prov = Providers.all[pos.coerceIn(0, Providers.all.size - 1)]
+                edtModel.setText(prov.defaultModel)
+                edtKey.hint = "${prov.keyHint}  (get one: ${prov.keyUrl})"
+                prefs.edit().putString("provider", prov.id).apply()
             }
             override fun onNothingSelected(p: AdapterView<*>?) {}
         }
@@ -110,6 +118,20 @@ class MainActivity : Activity() {
             askJarvis(spoken = false, fixedQuestion = "Look at what I'm showing you and describe it briefly.")
         }
 
+        // Wake word: hands-free "Yo JARVIS …" routes to screen / camera / general answers.
+        switchSpeakSteps.setOnCheckedChangeListener { _, on -> prefs.edit().putBoolean("speakSteps", on).apply() }
+        switchWake.setOnCheckedChangeListener { _, on ->
+            val w = wake
+            if (on) {
+                w?.onCommand = { cmd -> handleVoiceCommand(cmd) }
+                w?.start()
+                AgentBus.log("🎧 Wake word ON — say \"Yo JARVIS…\"")
+            } else {
+                w?.stop()
+                AgentBus.log("🎧 Wake word OFF")
+            }
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
         }
@@ -123,11 +145,10 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun defaultModelFor(provider: String) =
-        if (provider == "Gemini") "gemini-2.0-flash" else "openai/gpt-4o-mini"
+    private fun selectedProvider(): Provider =
+        Providers.all[spinnerProvider.selectedItemPosition.coerceIn(0, Providers.all.size - 1)]
 
-    private fun providerValue(): String =
-        if (spinnerProvider.selectedItemPosition == 1) "gemini" else "openrouter"
+    private fun providerValue(): String = selectedProvider().id
 
     override fun onResume() {
         super.onResume()
@@ -159,6 +180,11 @@ class MainActivity : Activity() {
             lastLogCount = logs.size
             txtLog.text = logs.joinToString("\n")
         }
+    }
+
+    private fun refreshStatus() {
+        val lines = PluginRegistry.statusLines()
+        txtStatus.text = if (lines.isEmpty()) "Plugins: —" else lines.joinToString("   ")
     }
 
     private fun toggleBubble() {
@@ -205,11 +231,9 @@ class MainActivity : Activity() {
      */
     private fun askJarvis(spoken: Boolean, fixedQuestion: String? = null) {
         val lv = live ?: run { AgentBus.log("⚡ Live plugin not ready"); return }
-        val isGemini = spinnerProvider.selectedItemPosition == 1
-        val provider = if (isGemini) "gemini" else "openrouter"
+        val provider = providerValue()
         val key = edtKey.text.toString().trim()
-        val model = edtModel.text.toString().trim()
-            .ifBlank { if (isGemini) "gemini-2.0-flash" else "openai/gpt-4o-mini" }
+        val model = edtModel.text.toString().trim().ifBlank { selectedProvider().defaultModel }
         val run = { q: String ->
             btnAsk.text = "⚡ Thinking…"
             lv.askNow(provider, key, model, q) { answer ->
@@ -229,13 +253,33 @@ class MainActivity : Activity() {
         }
     }
 
+    /**
+     * Route a wake-word command to the right kind of answer: camera ("what is this?"),
+     * screen help ("what do I do?"), or a general question. All answered aloud by Live.
+     */
+    private fun handleVoiceCommand(cmd: String) {
+        val c = cmd.lowercase()
+        val question = when {
+            c.contains("camera") || c.contains("what is this") || c.contains("what's this") ||
+                c.contains("this object") || c.contains("look at") && c.contains("camera") ->
+                "Look at what I'm showing you on the camera and tell me what this object is, briefly."
+            c.contains("screen") || c.contains("what do i do") || c.contains("what should i") ||
+                c.contains("help me") || c.contains("read this") ->
+                "Look at my screen and tell me what I should do next, briefly."
+            else -> cmd   // general question — Live still includes screen + camera
+        }
+        AgentBus.log("🎧 \"$cmd\"")
+        askJarvis(spoken = false, fixedQuestion = question)
+    }
+
     private fun requestCapture() {
         if (!isAccessibilityEnabled()) { txtA11y.text = "Enable the Controller first (step 1)."; return }
         prefs.edit()
             .putString("key", edtKey.text.toString().trim())
             .putString("model", edtModel.text.toString().trim())
-            .putString("provider", if (providerValue() == "gemini") "Gemini" else "OpenRouter")
+            .putString("provider", providerValue())
             .putBoolean("confirmSend", switchConfirm.isChecked)
+            .putBoolean("speakSteps", switchSpeakSteps.isChecked)
             .apply()
         val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         @Suppress("DEPRECATION")
@@ -252,6 +296,7 @@ class MainActivity : Activity() {
                 putExtra("model", edtModel.text.toString().trim())
                 putExtra("provider", providerValue())
                 putExtra("confirmSend", switchConfirm.isChecked)
+                putExtra("speakSteps", switchSpeakSteps.isChecked)
                 putExtra("resultCode", resultCode)
                 putExtra("data", data)
             }

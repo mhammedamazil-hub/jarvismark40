@@ -40,6 +40,7 @@ class AgentService : Service() {
         val model = intent?.getStringExtra("model") ?: "openai/gpt-4o-mini"
         val provider = intent?.getStringExtra("provider") ?: "openrouter"
         val confirmSend = intent?.getBooleanExtra("confirmSend", false) ?: false
+        val speakSteps = intent?.getBooleanExtra("speakSteps", false) ?: false
         val resultCode = intent?.getIntExtra("resultCode", 0) ?: 0
         val data = intent?.getParcelableExtra<Intent>("data")
 
@@ -58,7 +59,7 @@ class AgentService : Service() {
         grabber = if (data != null) ScreenGrabber(this, resultCode, data) else null
         if (grabber == null) AgentBus.log("⚠ No screen capture — using screen text only.")
 
-        scope.launch { runLoop(goal, key, model, provider, confirmSend) }
+        scope.launch { runLoop(goal, key, model, provider, confirmSend, speakSteps) }
         return START_NOT_STICKY
     }
 
@@ -69,7 +70,7 @@ class AgentService : Service() {
                     .any { it in r }
     }
 
-    private suspend fun runLoop(goal: String, key: String, model: String, provider: String, confirmSend: Boolean) {
+    private suspend fun runLoop(goal: String, key: String, model: String, provider: String, confirmSend: Boolean, speakSteps: Boolean) {
         val a11y = JarvisAccessibilityService.instance
         if (a11y == null) { AgentBus.log("✖ Accessibility Controller not enabled."); finish(); return }
         val voice = PluginRegistry.firstOfType(VoicePlugin::class.java)
@@ -101,6 +102,7 @@ class AgentService : Service() {
             }
             AgentBus.log("Step $step → ${action.action} ${action.reason}".trim())
             OverlayBridge.status("Step $step: ${action.action}")
+            if (speakSteps) voice?.speak("${action.action} ${action.reason}".trim())
 
             // stuck detection: same action 3x with no change -> nudge the model
             val sig = "${action.action}:${action.x},${action.y}:${action.text}:${action.app}"

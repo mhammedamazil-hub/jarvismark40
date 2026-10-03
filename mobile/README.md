@@ -11,9 +11,12 @@ you by voice**, **sees your camera**, answers instantly, and grows through **plu
 - **Eyes:** screenshots (MediaProjection) + the screen's text/buttons (Accessibility) + your camera.
 - **Hands:** taps / swipes / typing / launching apps via the Accessibility Service
   (this is Android's equivalent of `pyautogui`).
-- **Brain:** a cheap vision model you pick in the app (OpenRouter or Gemini) decides each step.
-- **Voice:** push-to-talk goals; JARVIS speaks replies, confirmations, and answers.
+- **Brain:** pick a provider + key + model in-app — OpenRouter, Google Gemini, OpenAI,
+  NVIDIA NIM, Anthropic Claude, Groq, Together, Mistral, DeepSeek (9 and counting).
+- **Voice:** push-to-talk goals; a hands-free **"Yo JARVIS…"** wake word; JARVIS speaks
+  replies, confirmations, and answers.
 - **Live + camera:** ask it anything — it looks at your screen (+ camera) and answers aloud.
+- **HUD UI:** an animated arc-reactor background with neon controls — Iron-Man grade.
 - **Phone + tablet:** the layout scrolls and centers to a readable column on any screen.
 - **Plugins:** new eyes, voice commands, and tools drop in like apps.
 
@@ -37,9 +40,10 @@ so add it yourself through GitHub's website (where you have permission):
 2. Open **JARVIS Mobile**.
 3. **Step 1** — tap *Enable JARVIS Controller* → in Accessibility, turn on
    **JARVIS Controller**. (One time. This is what lets it see + drive apps.)
-4. Pick a **provider** — **OpenRouter** (paste an `sk-or-…` key, default model
-   `openai/gpt-4o-mini`) or **Gemini** (paste a Google AI Studio `AIza…` key,
-   model `gemini-2.0-flash`). Any cheap vision model works.
+4. Pick a **provider** and paste its key (the box tells you where to get one):
+   **OpenRouter**, **Gemini**, **OpenAI**, **NVIDIA NIM**, **Anthropic Claude**, **Groq**,
+   **Together**, **Mistral**, or **DeepSeek**. The model field auto-fills a good vision
+   default (edit it freely). Any cheap vision model works.
 5. Leave **🔒 Confirm before sending** ON — JARVIS pauses for your Yes/No before
    it types or sends anything (shown on the floating bubble).
 6. Type a **goal**, tap **Start**, and approve the screen-capture prompt. It works
@@ -56,6 +60,16 @@ Tap **Show floating bubble** and allow **"Display over other apps"**. A draggabl
   hands-free. (First run asks for the microphone permission.)
 - **JARVIS speaks its replies**: it says confirmations ("JARVIS wants to send 'on my way'.
   Proceed?") and the final "Goal complete." / "Stopped." out loud. Toggle it off anytime.
+- **Narrate every step**: flip "🗣 Narrate every step" and JARVIS calls out each action live.
+
+### 🎧 Wake word — "Yo JARVIS…"
+Turn on **Wake word** and just talk to your phone from anywhere:
+- *"Yo JARVIS, look at my screen and tell me what to do."*
+- *"Yo JARVIS, look at the camera — what is this object?"*
+- *"Yo JARVIS, what's on my screen?"*
+
+It hears the wake phrase, reads your screen (+ camera), thinks, and answers **out loud**.
+It keeps listening so you can keep talking. (Opt-in — always-listening uses battery.)
 
 ### ⚡ Live + 📷 Camera — the real JARVIS moment
 - **Ask JARVIS (mic):** tap, ask anything ("what's on my screen?", "summarize this page"),
@@ -154,6 +168,25 @@ gradle :app:assembleDebug      # or: ./gradlew assembleDebug if you have the wra
 # APK: app/build/outputs/apk/debug/app-debug.apk
 ```
 Requires JDK 17 + Android SDK (API 34). `minSdk 26` (Android 8+).
+
+## Providers
+
+Pick any of these in the app — key + model are editable, defaults auto-fill:
+
+| Provider | Default model | Get a key |
+|---|---|---|
+| OpenRouter | `openai/gpt-4o-mini` | openrouter.ai/keys |
+| Google Gemini | `gemini-2.0-flash` | aistudio.google.com/app/apikey |
+| OpenAI | `gpt-4o-mini` | platform.openai.com/api-keys |
+| NVIDIA NIM | `meta/llama-3.2-90b-vision-instruct` | build.nvidia.com |
+| Anthropic Claude | `claude-3-5-haiku-latest` | console.anthropic.com |
+| Groq | `llama-3.2-90b-vision-preview` | console.groq.com/keys |
+| Together AI | `meta-llama/Llama-3.2-11b-Vision-Instruct-Turbo` | api.together.xyz |
+| Mistral | `pixtral-12b-2409` | console.mistral.ai/api-keys |
+| DeepSeek (text-only) | `deepseek-chat` | platform.deepseek.com |
+
+Adding a provider = one entry in `Providers.kt`. Both OpenAI-compatible and Anthropic-style
+APIs are handled automatically. **Never commit keys** — they stay on the device.
 
 ## Screenshots
 
