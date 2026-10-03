@@ -19,9 +19,10 @@ data class AgentAction(
 )
 
 /**
- * Talks to a cheap OpenRouter vision model: goal + screenshot + on-screen elements
- * in, ONE JSON action out. You pick the model in the app (default a small, cheap
- * vision model) so each step costs pennies.
+ * Talks to a vision model to decide each step. Two providers, same request shape:
+ *   • openrouter — https://openrouter.ai/api/v1/chat/completions (any cheap VLM)
+ *   • gemini     — Google's OpenAI-compatible endpoint (generativelanguage…/openai/)
+ * You pick provider + key + model in the app.
  */
 object ModelClient {
     private val client = OkHttpClient.Builder()
@@ -30,6 +31,10 @@ object ModelClient {
         .callTimeout(90, TimeUnit.SECONDS)
         .build()
     private val JSON = "application/json; charset=utf-8".toMediaType()
+
+    private const val OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+    private const val GEMINI_URL =
+        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 
     private val SYSTEM = """
         You are JARVIS, an agent controlling an Android phone. You are shown a GOAL,
@@ -43,11 +48,13 @@ object ModelClient {
         - Use "launch" with an app name to open an app. Use "type" only when a field is focused
           (tap it first). Use "swipe" to scroll (give x1,y1,x2,y2).
         - Dismiss popups/permission dialogs (tap Allow/OK/close, or "back").
+        - If you already did the same thing and nothing changed, try a DIFFERENT approach.
         - When the goal is fully achieved, return action "done".
         - Never invent coordinates outside the screen.
     """.trimIndent()
 
     fun decide(
+        provider: String,
         apiKey: String,
         model: String,
         goal: String,
@@ -55,15 +62,14 @@ object ModelClient {
         screenSummary: String,
         history: String
     ): AgentAction {
+        val url = if (provider.equals("gemini", true)) GEMINI_URL else OPENROUTER_URL
         val userText = buildString {
             append("GOAL: ").append(goal).append('\n')
             if (history.isNotBlank()) append("HISTORY: ").append(history).append('\n')
             append("SCREEN ELEMENTS (centre x,y):\n").append(screenSummary.ifBlank { "(none readable)" })
         }
         val parts = JSONArray()
-        parts.put(JSONObject().apply {
-            put("type", "text"); put("text", userText)
-        })
+        parts.put(JSONObject().apply { put("type", "text"); put("text", userText) })
         if (screenshotB64 != null) {
             parts.put(JSONObject().apply {
                 put("type", "image_url")
@@ -81,7 +87,7 @@ object ModelClient {
             put("max_tokens", 300)
         }
         val req = Request.Builder()
-            .url("https://openrouter.ai/api/v1/chat/completions")
+            .url(url)
             .header("Authorization", "Bearer $apiKey")
             .post(payload.toString().toRequestBody(JSON))
             .build()

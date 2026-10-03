@@ -41,6 +41,21 @@
             android:text="Status: checking…"
             android:textColor="#FFB300" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Model provider"
+            android:textColor="#9FB3B8"
+            android:textSize="12sp" />
+
+        <Spinner
+            android:id="@+id/spinnerProvider"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:background="#04141A" />
+
         <EditText
             android:id="@+id/edtKey"
             android:layout_width="match_parent"
@@ -60,6 +75,22 @@
             android:hint="Vision model (OpenRouter id)"
             android:textColor="#E0F7FA"
             android:textColorHint="#5A6E72" />
+
+        <Switch
+            android:id="@+id/switchConfirm"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="🔒 Confirm before sending / posting"
+            android:textColor="#E0F7FA"
+            android:checked="true" />
+
+        <Button
+            android:id="@+id/btnBubble"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Show floating bubble (tap from any app)" />
 
         <EditText
             android:id="@+id/edtGoal"

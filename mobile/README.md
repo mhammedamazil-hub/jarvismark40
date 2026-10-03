@@ -29,10 +29,19 @@ so add it yourself through GitHub's website (where you have permission):
 2. Open **JARVIS Mobile**.
 3. **Step 1** — tap *Enable JARVIS Controller* → in Accessibility, turn on
    **JARVIS Controller**. (One time. This is what lets it see + drive apps.)
-4. Paste your **OpenRouter API key** (`sk-or-…`) and pick a cheap vision model
-   (default `openai/gpt-4o-mini`; any OpenRouter vision model works).
-5. Type a **goal**, tap **Start**, and approve the screen-capture prompt.
-6. Watch it work in the log. **Stop** ends it.
+4. Pick a **provider** — **OpenRouter** (paste an `sk-or-…` key, default model
+   `openai/gpt-4o-mini`) or **Gemini** (paste a Google AI Studio `AIza…` key,
+   model `gemini-2.0-flash`). Any cheap vision model works.
+5. Leave **🔒 Confirm before sending** ON — JARVIS pauses for your Yes/No before
+   it types or sends anything (shown on the floating bubble).
+6. Type a **goal**, tap **Start**, and approve the screen-capture prompt. It works
+   while you use other apps. **Stop** ends it.
+
+### Floating bubble (use it from inside any app)
+Tap **Show floating bubble** and allow **"Display over other apps"**. A draggable
+**◉ JARVIS** bubble now floats on top of everything — tap it, type a goal, hit
+**Start**, and it drives your phone without you opening the app again.
+
 
 ## Build locally (optional)
 ```bash

@@ -4,22 +4,30 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
+import android.widget.Spinner
+import android.widget.Switch
 import android.widget.TextView
 
 class MainActivity : Activity() {
     private lateinit var btnAccessibility: Button
     private lateinit var txtA11y: TextView
+    private lateinit var spinnerProvider: Spinner
     private lateinit var edtKey: EditText
     private lateinit var edtModel: EditText
     private lateinit var edtGoal: EditText
+    private lateinit var switchConfirm: Switch
+    private lateinit var btnBubble: Button
     private lateinit var btnStart: Button
     private lateinit var btnStop: Button
     private lateinit var txtLog: TextView
@@ -36,27 +44,69 @@ class MainActivity : Activity() {
         setContentView(R.layout.activity_main)
         btnAccessibility = findViewById(R.id.btnAccessibility)
         txtA11y = findViewById(R.id.txtAccessibilityState)
+        spinnerProvider = findViewById(R.id.spinnerProvider)
         edtKey = findViewById(R.id.edtKey)
         edtModel = findViewById(R.id.edtModel)
         edtGoal = findViewById(R.id.edtGoal)
+        switchConfirm = findViewById(R.id.switchConfirm)
+        btnBubble = findViewById(R.id.btnBubble)
         btnStart = findViewById(R.id.btnStart)
         btnStop = findViewById(R.id.btnStop)
         txtLog = findViewById(R.id.txtLog)
 
+        spinnerProvider.adapter = ArrayAdapter(
+            this, android.R.layout.simple_spinner_dropdown_item, listOf("OpenRouter", "Gemini")
+        )
+        val savedProvider = prefs.getString("provider", "OpenRouter") ?: "OpenRouter"
+        spinnerProvider.setSelection(if (savedProvider == "Gemini") 1 else 0)
         edtKey.setText(prefs.getString("key", ""))
-        edtModel.setText(prefs.getString("model", "openai/gpt-4o-mini"))
+        edtModel.setText(prefs.getString("model", defaultModelFor(savedProvider)))
+        edtKey.hint = if (savedProvider == "Gemini") "Google AI Studio key (AIza…)" else "OpenRouter API key (sk-or-…)"
+        switchConfirm.isChecked = prefs.getBoolean("confirmSend", true)
+
+        spinnerProvider.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p: AdapterView<*>?, v: android.view.View?, pos: Int, id: Long) {
+                val prov = if (pos == 1) "Gemini" else "OpenRouter"
+                edtModel.setText(defaultModelFor(prov))
+                edtKey.hint = if (prov == "Gemini") "Google AI Studio key (AIza…)" else "OpenRouter API key (sk-or-…)"
+                prefs.edit().putString("provider", prov).apply()
+            }
+            override fun onNothingSelected(p: AdapterView<*>?) {}
+        }
 
         btnAccessibility.setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+        btnBubble.setOnClickListener { toggleBubble() }
         btnStart.setOnClickListener { requestCapture() }
         btnStop.setOnClickListener { stopService(Intent(this, AgentService::class.java)) }
+        switchConfirm.setOnCheckedChangeListener { _, on -> prefs.edit().putBoolean("confirmSend", on).apply() }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
         }
+
+        // Launched from the floating bubble with a goal -> run it straight away.
+        intent?.getStringExtra("goal")?.let { g ->
+            edtGoal.setText(g)
+            if (isAccessibilityEnabled()) requestCapture()
+        }
     }
 
-    override fun onResume() { super.onResume(); handler.post(poller) }
-    override fun onPause() { handler.removeCallbacks(poller) }
+    private fun defaultModelFor(provider: String) =
+        if (provider == "Gemini") "gemini-2.0-flash" else "openai/gpt-4o-mini"
+
+    private fun providerValue(): String =
+        if (spinnerProvider.selectedItemPosition == 1) "gemini" else "openrouter"
+
+    override fun onResume() {
+        super.onResume()
+        handler.post(poller)
+        // Came back from the "draw over apps" settings screen with permission granted?
+        if (Settings.canDrawOverlays(this) && BubbleService.instance == null && prefs.getBoolean("bubbleWanted", false)) {
+            startService(Intent(this, BubbleService::class.java))
+        }
+    }
+
+    override fun onPause() { super.onPause(); handler.removeCallbacks(poller) }
 
     private fun refreshA11y() {
         val on = isAccessibilityEnabled()
@@ -79,11 +129,30 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun toggleBubble() {
+        if (BubbleService.instance != null) {
+            stopService(Intent(this, BubbleService::class.java))
+            prefs.edit().putBoolean("bubbleWanted", false).apply()
+            btnBubble.text = "Show floating bubble"
+            return
+        }
+        if (!Settings.canDrawOverlays(this)) {
+            prefs.edit().putBoolean("bubbleWanted", true).apply()
+            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName")))
+            return
+        }
+        startService(Intent(this, BubbleService::class.java))
+        btnBubble.text = "Hide floating bubble"
+    }
+
     private fun requestCapture() {
         if (!isAccessibilityEnabled()) { txtA11y.text = "Enable the Controller first (step 1)."; return }
         prefs.edit()
             .putString("key", edtKey.text.toString().trim())
             .putString("model", edtModel.text.toString().trim())
+            .putString("provider", if (providerValue() == "gemini") "Gemini" else "OpenRouter")
+            .putBoolean("confirmSend", switchConfirm.isChecked)
             .apply()
         val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         @Suppress("DEPRECATION")
@@ -98,11 +167,14 @@ class MainActivity : Activity() {
                 putExtra("goal", edtGoal.text.toString())
                 putExtra("key", edtKey.text.toString().trim())
                 putExtra("model", edtModel.text.toString().trim())
+                putExtra("provider", providerValue())
+                putExtra("confirmSend", switchConfirm.isChecked)
                 putExtra("resultCode", resultCode)
                 putExtra("data", data)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(svc)
             else startService(svc)
+            moveTaskToBack(true)   // let the agent work while you use other apps
         }
     }
 

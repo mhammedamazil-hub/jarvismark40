@@ -11,7 +11,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.*
 
-/** Simple log bus so the Activity can show what the agent is doing. */
+/** Simple log bus so the Activity + bubble can show what the agent is doing. */
 object AgentBus {
     val logs = ArrayList<String>()
     var listener: ((String) -> Unit)? = null
@@ -24,8 +24,9 @@ object AgentBus {
 }
 
 /**
- * Runs the agent loop in the foreground (so it keeps working after you leave the
- * app): capture screen + read elements -> ask the model -> do ONE action -> repeat.
+ * Runs the agent loop in the foreground (keeps working after you leave the app):
+ * capture screen + read elements -> ask the model -> do ONE action -> repeat.
+ * With confirm-before-send, risky steps pause for your Yes/No on the floating bubble.
  */
 class AgentService : Service() {
     private var grabber: ScreenGrabber? = null
@@ -37,6 +38,8 @@ class AgentService : Service() {
         val goal = intent?.getStringExtra("goal").orEmpty()
         val key = intent?.getStringExtra("key").orEmpty()
         val model = intent?.getStringExtra("model") ?: "openai/gpt-4o-mini"
+        val provider = intent?.getStringExtra("provider") ?: "openrouter"
+        val confirmSend = intent?.getBooleanExtra("confirmSend", false) ?: false
         val resultCode = intent?.getIntExtra("resultCode", 0) ?: 0
         val data = intent?.getParcelableExtra<Intent>("data")
 
@@ -48,21 +51,31 @@ class AgentService : Service() {
         }
 
         AgentBus.clear()
-        AgentBus.log("▶ Goal: $goal")
+        AgentBus.log("▶ Goal: $goal  [$provider/$model]")
         if (key.isBlank()) { AgentBus.log("✖ No API key set."); finish(); return START_NOT_STICKY }
+        if (confirmSend) AgentBus.log("🔒 Confirm-before-send is ON.")
 
         grabber = if (data != null) ScreenGrabber(this, resultCode, data) else null
         if (grabber == null) AgentBus.log("⚠ No screen capture — using screen text only.")
 
-        scope.launch { runLoop(goal, key, model) }
+        scope.launch { runLoop(goal, key, model, provider, confirmSend) }
         return START_NOT_STICKY
     }
 
-    private suspend fun runLoop(goal: String, key: String, model: String) {
+    private fun isRisky(a: AgentAction): Boolean {
+        val r = (a.reason + " " + a.text + " " + a.app).lowercase()
+        return a.action.equals("type", true) ||
+                listOf("send", "post", "submit", "pay", "purchase", "delete", "confirm order")
+                    .any { it in r }
+    }
+
+    private suspend fun runLoop(goal: String, key: String, model: String, provider: String, confirmSend: Boolean) {
         val a11y = JarvisAccessibilityService.instance
         if (a11y == null) { AgentBus.log("✖ Accessibility Controller not enabled."); finish(); return }
         val history = StringBuilder()
         var done = false
+        var lastSig = ""
+        var repeats = 0
         for (step in 1..40) {
             if (!scope.isActive) break
             val nodes = withContext(Dispatchers.Main) { a11y.readScreen() }
@@ -73,14 +86,40 @@ class AgentService : Service() {
             }
             val action = try {
                 withContext(Dispatchers.IO) {
-                    ModelClient.decide(key, model, goal, shot, summary, history.toString())
+                    ModelClient.decide(provider, key, model, goal, shot, summary, history.toString())
                 }
             } catch (e: Exception) {
                 AgentBus.log("⚠ model error: ${e.message}")
                 AgentAction("wait", reason = e.message ?: "error")
             }
             AgentBus.log("Step $step → ${action.action} ${action.reason}".trim())
-            history.append("s$step:${action.action}; ")
+            OverlayBridge.status("Step $step: ${action.action}")
+
+            // stuck detection: same action 3x with no change -> nudge the model
+            val sig = "${action.action}:${action.x},${action.y}:${action.text}:${action.app}"
+            if (sig == lastSig) repeats++ else { repeats = 0; lastSig = sig }
+            if (repeats >= 2) {
+                history.append("NOTE: you repeated '${action.action}' with no change — try a different element or scroll. ")
+                repeats = 0
+            } else {
+                history.append("s$step:${action.action}; ")
+            }
+
+            // confirm-before-send gate for risky steps
+            if (confirmSend && isRisky(action)) {
+                val label = when {
+                    action.action.equals("type", true) -> "type \"${action.text.take(40)}\""
+                    action.app.isNotBlank() -> "${action.action} ${action.app}"
+                    else -> "${action.action} (${action.reason.take(40)})"
+                }
+                val ok = OverlayBridge.confirm("JARVIS wants to $label. Proceed?")
+                if (!ok) {
+                    AgentBus.log("⛔ You declined: ${action.action}. Skipping.")
+                    history.append("user_declined:${action.action}; ")
+                    delay(600)
+                    continue
+                }
+            }
 
             when (action.action.lowercase()) {
                 "done" -> { AgentBus.log("✅ Goal complete."); done = true }
@@ -99,22 +138,20 @@ class AgentService : Service() {
             delay(1500)
         }
         if (!done) AgentBus.log("⏹ Stopped (step limit reached).")
+        OverlayBridge.status(done.toString().let { if (done) "Done ✅" else "Stopped" })
         finish()
     }
 
     private fun finish() {
         grabber?.release(); grabber = null
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N)
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        else
-            @Suppress("DEPRECATION") stopForeground(true)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE)
+        else @Suppress("DEPRECATION") stopForeground(true)
         stopSelf()
     }
 
     private fun buildNotif(text: String): Notification {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-            nm.createNotificationChannel(
+            (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(
                 NotificationChannel(CHANNEL, getString(R.string.notif_channel_name),
                     NotificationManager.IMPORTANCE_LOW))
         }
