@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp"
+    android:background="#00090E">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="J.A.R.V.I.S — Mobile Agent"
+            android:textColor="#00E5FF"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Tell it a goal. It sees your screen and drives any app."
+            android:textColor="#9FB3B8"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/btnAccessibility"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="1. Enable JARVIS Controller (Accessibility)" />
+
+        <TextView
+            android:id="@+id/txtAccessibilityState"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Status: checking…"
+            android:textColor="#FFB300" />
+
+        <EditText
+            android:id="@+id/edtKey"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:hint="OpenRouter API key (sk-or-…)"
+            android:textColor="#E0F7FA"
+            android:textColorHint="#5A6E72"
+            android:inputType="textPassword" />
+
+        <EditText
+            android:id="@+id/edtModel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="openai/gpt-4o-mini"
+            android:hint="Vision model (OpenRouter id)"
+            android:textColor="#E0F7FA"
+            android:textColorHint="#5A6E72" />
+
+        <EditText
+            android:id="@+id/edtGoal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:minLines="2"
+            android:gravity="top"
+            android:hint="Goal — e.g. Open WhatsApp, message Ravi 'on my way'"
+            android:textColor="#E0F7FA"
+            android:textColorHint="#5A6E72" />
+
+        <Button
+            android:id="@+id/btnStart"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="2. Start JARVIS (grant screen capture)" />
+
+        <Button
+            android:id="@+id/btnStop"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Stop" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Activity log"
+            android:textColor="#00E5FF"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/txtLog"
+            android:layout_width="match_parent"
+            android:layout_height="360dp"
+            android:layout_marginTop="4dp"
+            android:padding="8dp"
+            android:background="#04141A"
+            android:textColor="#9FE8F0"
+            android:textSize="12sp"
+            android:fontFamily="monospace"
+            android:scrollbars="vertical" />
+    </LinearLayout>
+</ScrollView>
