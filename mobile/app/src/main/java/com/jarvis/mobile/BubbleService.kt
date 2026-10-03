@@ -50,7 +50,9 @@ class BubbleService : Service() {
         super.onCreate()
         instance = this
         wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        startForeground(NOTIF_ID, buildNotif())
+        // Foreground keeps the bubble alive; if a strict OEM/Android-14 rejects the
+        // untyped FGS we still run (overlay persists) rather than crashing.
+        try { startForeground(NOTIF_ID, buildNotif()) } catch (_: Exception) {}
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
