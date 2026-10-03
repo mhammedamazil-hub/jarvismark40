@@ -79,7 +79,8 @@ class VoicePlugin(private val appCtx: Context) : JarvisPlugin {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
         }
-        sr.startListening(intent)
+        val started = runCatching { sr.startListening(intent) }.isSuccess
+        if (!started) { listening = false; onError("Microphone unavailable (grant the permission)") }
     }
 
     fun stopListening() { runCatching { recognizer?.stopListening() }; listening = false }
