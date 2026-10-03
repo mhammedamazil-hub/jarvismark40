@@ -32,11 +32,16 @@ class MainActivity : Activity() {
     private lateinit var btnStop: Button
     private lateinit var btnVoice: Button
     private lateinit var switchVoice: Switch
+    private lateinit var btnAsk: Button
+    private lateinit var btnLook: Button
+    private lateinit var switchBackCam: Switch
     private lateinit var txtLog: TextView
     private val handler = Handler(Looper.getMainLooper())
     private var lastLogCount = -1
     private val prefs by lazy { getSharedPreferences("jarvis", Context.MODE_PRIVATE) }
     private val voice: VoicePlugin? get() = PluginRegistry.firstOfType(VoicePlugin::class.java)
+    private val live: LivePlugin? get() = PluginRegistry.firstOfType(LivePlugin::class.java)
+    private val cam: CameraPlugin? get() = PluginRegistry.firstOfType(CameraPlugin::class.java)
 
     private val poller = object : Runnable {
         override fun run() { refreshA11y(); refreshLog(); handler.postDelayed(this, 500) }
@@ -57,6 +62,9 @@ class MainActivity : Activity() {
         btnStop = findViewById(R.id.btnStop)
         btnVoice = findViewById(R.id.btnVoice)
         switchVoice = findViewById(R.id.switchVoice)
+        btnAsk = findViewById(R.id.btnAsk)
+        btnLook = findViewById(R.id.btnLook)
+        switchBackCam = findViewById(R.id.switchBackCam)
         txtLog = findViewById(R.id.txtLog)
 
         // Boot the plugin system (voice first; camera/live are future plugins).
@@ -94,10 +102,19 @@ class MainActivity : Activity() {
         switchVoice.setOnCheckedChangeListener { _, on -> voice?.repliesEnabled = on }
         btnVoice.setOnClickListener { speakGoal() }
 
+        // Live + camera: ask JARVIS anything (it sees screen + camera and answers aloud),
+        // or point the camera at something and have it described.
+        switchBackCam.setOnCheckedChangeListener { _, on -> cam?.frontFacing = !on }
+        btnAsk.setOnClickListener { askJarvis(spoken = true) }
+        btnLook.setOnClickListener {
+            askJarvis(spoken = false, fixedQuestion = "Look at what I'm showing you and describe it briefly.")
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
         }
         requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 2)
+        requestPermissions(arrayOf(android.Manifest.permission.CAMERA), 3)
 
         // Launched from the floating bubble with a goal -> run it straight away.
         intent?.getStringExtra("goal")?.let { g ->
@@ -179,6 +196,37 @@ class MainActivity : Activity() {
                 AgentBus.log("🎙 $err")
             }
         )
+    }
+
+    /**
+     * Live ask: JARVIS reads the screen (+ camera) and answers aloud. With [spoken] it
+     * listens for your question; otherwise it uses [fixedQuestion] (e.g. "describe what I'm
+     * showing you" for the camera-look button).
+     */
+    private fun askJarvis(spoken: Boolean, fixedQuestion: String? = null) {
+        val lv = live ?: run { AgentBus.log("⚡ Live plugin not ready"); return }
+        val isGemini = spinnerProvider.selectedItemPosition == 1
+        val provider = if (isGemini) "gemini" else "openrouter"
+        val key = edtKey.text.toString().trim()
+        val model = edtModel.text.toString().trim()
+            .ifBlank { if (isGemini) "gemini-2.0-flash" else "openai/gpt-4o-mini" }
+        val run = { q: String ->
+            btnAsk.text = "⚡ Thinking…"
+            lv.askNow(provider, key, model, q) { answer ->
+                btnAsk.text = "⚡ Ask JARVIS"
+                AgentBus.log("JARVIS: $answer")
+            }
+        }
+        if (fixedQuestion != null) {
+            run(fixedQuestion)
+        } else {
+            voice?.speak("Yes?")
+            btnAsk.text = "🎙 Listening…"
+            voice?.listen(
+                onResult = { q -> btnAsk.text = "⚡ Ask JARVIS"; run(q) },
+                onError = { err -> btnAsk.text = "⚡ Ask JARVIS"; AgentBus.log("🎙 $err") }
+            )
+        }
     }
 
     private fun requestCapture() {

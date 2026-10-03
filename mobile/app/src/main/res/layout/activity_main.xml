@@ -121,6 +121,44 @@
             android:layout_marginTop="8dp"
             android:text="🎙 Speak goal (push to talk)" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="⚡ Live assistant"
+            android:textColor="#00E5FF"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="Ask JARVIS anything — it sees your screen (+ camera) and answers aloud."
+            android:textColor="#9FB3B8"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btnAsk"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="⚡ Ask JARVIS (mic) — instant answer" />
+
+        <Button
+            android:id="@+id/btnLook"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="📷 Look at camera — describe what I show" />
+
+        <Switch
+            android:id="@+id/switchBackCam"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="📷 Use back camera (off = selfie)"
+            android:textColor="#E0F7FA" />
+
         <Button
             android:id="@+id/btnStart"
             android:layout_width="match_parent"

@@ -53,6 +53,15 @@ object ModelClient {
         - Never invent coordinates outside the screen.
     """.trimIndent()
 
+    private val LIVE_SYSTEM = """
+        You are JARVIS, a witty, concise voice assistant living on an Android phone. The
+        user is talking to you right now. You are given SCREEN TEXT (readable on-screen
+        elements) and sometimes a CAMERA image of what they're showing you. Answer in 1-3
+        short spoken sentences — you are being read aloud, so no markdown, lists, or emoji.
+        If they show you something in the camera, describe/identify it helpfully. If you
+        can't see something, say so plainly. Be warm and a little like Tony Stark's JARVIS.
+    """.trimIndent()
+
     fun decide(
         provider: String,
         apiKey: String,
@@ -109,6 +118,53 @@ object ModelClient {
                     .getJSONObject("message").optString("content")
             } catch (e: Exception) { "" }
             return parse(content)
+        }
+    }
+
+    /**
+     * Conversational vision Q&A — the engine behind "Live" (instant answers) and the
+     * camera "look" flow. Unlike [decide] (which returns one device action), this returns
+     * plain text the user hears. You may pass extra images (e.g. a camera frame).
+     */
+    fun ask(
+        provider: String,
+        apiKey: String,
+        model: String,
+        prompt: String,
+        images: List<String> = emptyList()
+    ): String {
+        val url = if (provider.equals("gemini", true)) GEMINI_URL else OPENROUTER_URL
+        val parts = JSONArray()
+        parts.put(JSONObject().apply { put("type", "text"); put("text", prompt) })
+        for (b64 in images) {
+            parts.put(JSONObject().apply {
+                put("type", "image_url")
+                put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$b64"))
+            })
+        }
+        val messages = JSONArray().apply {
+            put(JSONObject().apply { put("role", "system"); put("content", LIVE_SYSTEM) })
+            put(JSONObject().apply { put("role", "user"); put("content", parts) })
+        }
+        val payload = JSONObject().apply {
+            put("model", model)
+            put("messages", messages)
+            put("temperature", 0.4)
+            put("max_tokens", 400)
+        }
+        val req = Request.Builder()
+            .url(url)
+            .header("Authorization", "Bearer $apiKey")
+            .post(payload.toString().toRequestBody(JSON))
+            .build()
+        client.newCall(req).execute().use { resp ->
+            val s = resp.body?.string() ?: ""
+            if (!resp.isSuccessful) return "I couldn't reach my brain (HTTP ${resp.code})."
+            val content = try {
+                JSONObject(s).getJSONArray("choices").getJSONObject(0)
+                    .getJSONObject("message").optString("content")
+            } catch (e: Exception) { "" }
+            return content.ifBlank { "I didn't catch that." }
         }
     }
 

@@ -18,7 +18,8 @@ object BuiltinPlugins {
         if (installed) return
         installed = true
         PluginRegistry.register(VoicePlugin(ctx.applicationContext))
-        // PluginRegistry.register(CameraPlugin(ctx.applicationContext))   // next
-        // PluginRegistry.register(LivePlugin(ctx.applicationContext))      // next
+        PluginRegistry.register(CameraPlugin(ctx.applicationContext))
+        PluginRegistry.register(LivePlugin(ctx.applicationContext))
+        // Future drop-ins: WakeWordPlugin, MemoryPlugin, ReminderPlugin… (same pattern)
     }
 }

@@ -1,16 +1,21 @@
 # JARVIS Mobile — standalone phone agent
 
+<p align="center"><img src="docs/banner.jpg" alt="JARVIS Mobile concept banner" width="720"></p>
+
 An Android app that **sees your screen and drives any app** to reach a goal you type
 ("open WhatsApp and message Ravi 'on my way'", "open Chrome and search logo design").
-It thinks for itself using an online vision model (OpenRouter) — **no laptop needed**.
+It thinks for itself with an online vision model you pick (OpenRouter or Gemini), **talks to
+you by voice**, **sees your camera**, answers instantly, and grows through **plugins** —
+**no laptop needed**.
 
-- **Eyes:** screenshots (MediaProjection) + the screen's text/buttons (Accessibility).
+- **Eyes:** screenshots (MediaProjection) + the screen's text/buttons (Accessibility) + your camera.
 - **Hands:** taps / swipes / typing / launching apps via the Accessibility Service
   (this is Android's equivalent of `pyautogui`).
 - **Brain:** a cheap vision model you pick in the app (OpenRouter or Gemini) decides each step.
-- **Voice:** push-to-talk to give a goal hands-free; JARVIS speaks replies and confirmations.
+- **Voice:** push-to-talk goals; JARVIS speaks replies, confirmations, and answers.
+- **Live + camera:** ask it anything — it looks at your screen (+ camera) and answers aloud.
 - **Phone + tablet:** the layout scrolls and centers to a readable column on any screen.
-- **Plugins:** new eyes (camera), live answers, and voice commands drop in like apps.
+- **Plugins:** new eyes, voice commands, and tools drop in like apps.
 
 ## Build the APK (automatic — your plan)
 
@@ -52,6 +57,13 @@ Tap **Show floating bubble** and allow **"Display over other apps"**. A draggabl
 - **JARVIS speaks its replies**: it says confirmations ("JARVIS wants to send 'on my way'.
   Proceed?") and the final "Goal complete." / "Stopped." out loud. Toggle it off anytime.
 
+### ⚡ Live + 📷 Camera — the real JARVIS moment
+- **Ask JARVIS (mic):** tap, ask anything ("what's on my screen?", "summarize this page"),
+  and it reads your screen, thinks, and **answers out loud** — no multi-step goal needed.
+- **Look at camera:** point your camera at something and it describes it. Toggle
+  **back camera** for objects, or leave it on selfie.
+- The camera frame + the screen text are both sent to the model, so it can see what you show it.
+
 ### Phone **and** tablet
 The layout scrolls and self-centers to a readable column on tablets (via `values-sw600dp`),
 so it's usable on both without cutting anything off.
@@ -62,9 +74,78 @@ the model **new eyes** (extra images), **new context**, **new voice commands**, 
 tools** — all merged into the agent loop automatically. Adding a feature = one `JarvisPlugin`
 class + one line in `BuiltinPlugins.install()`.
 
-Voice is plugin #1. The next drop-ins (same pattern, each isolated and low-risk):
-**Camera** ("see my camera when I show it"), **Live** (continuous watch + instant spoken
-answers), and **Wake word** (hands-free "Hey JARVIS", opt-in).
+Shipped plugins: **Voice**, **Camera**, **Live**. See [the roadmap](ROADMAP.md) for what's next.
+
+## Write a plugin (the community hook)
+
+A plugin is a single class implementing `JarvisPlugin`, registered in
+`BuiltinPlugins.install()`. Copy this starter into a new file under
+`app/src/main/java/com/jarvis/mobile/`:
+
+```kotlin
+class GreeterPlugin(private val ctx: Context) : JarvisPlugin {
+    override val id = "greeter"
+    override val displayName = "Greeter"
+
+    // Advertise a tool the model knows it can ask for.
+    override fun tools() = listOf(PluginTool("greet", "Say a friendly greeting"))
+
+    // Runs every agent step. Add vision (images), prompt context, or a line to speak.
+    override fun onFrame(frame: AgentFrame): PluginContribution {
+        if (frame.goal.contains("greet", ignoreCase = true))
+            return PluginContribution(context = "The user wants a warm greeting.")
+        return PluginContribution()
+    }
+
+    // Handle a spoken/typed command.
+    override fun onCommand(command: String): Boolean {
+        if (command.trim().lowercase().startsWith("greet")) {
+            PluginRegistry.firstOfType(VoicePlugin::class.java)?.speak("Good to see you.")
+            return true
+        }
+        return false
+    }
+}
+```
+
+Then register it:
+
+```kotlin
+// BuiltinPlugins.install()
+PluginRegistry.register(GreeterPlugin(ctx.applicationContext))
+```
+
+That's it — the agent loop, UI, and voice all pick it up automatically. One plugin failing
+never crashes the loop (every hook is guarded).
+
+## How it works
+
+```
+   you ──▶ goal / "ask" ─┐
+                         ▼
+  ┌─────────────── MainActivity ───────────────┐        ┌──────────── Plugins ────────────┐
+  │  Spinner(provider)  Key  Model  Confirm    │        │ Voice · Camera · Live · …        │
+  └───────┬───────────────────────┬────────────┘        │  (add eyes/context/commands)     │
+          │ Start                 │ Ask/Look            └───────────────┬──────────────────┘
+          ▼                       ▼                                    │ vision + context
+   AgentService            LivePlugin.ask()                             ▼
+   (foreground loop)             │                             ModelClient.ask()
+          │                      │                                    ▲
+   read screen (a11y)            │                                    │
+   + screenshot (MediaProj.)      │                             ModelClient.decide()
+          │                      │                                    │ one JSON action
+          └──────────► ModelClient.decide() ◄────────────────────────┘
+                              │
+                    JarvisAccessibilityService → tap/swipe/type/launch
+                              │
+                     confirm-before-send? ──▶ bubble asks Yes/No
+```
+
+- **AgentService** runs the see→think→act loop in the foreground (survives leaving the app).
+- **ModelClient** speaks to OpenRouter or Gemini (same request shape) — `decide()` returns one
+  device action, `ask()` returns a spoken answer.
+- **BubbleService** floats over any app and hosts the confirm dialog.
+- Every risky step (type / send / pay / delete) pauses for your approval.
 
 ## Build locally (optional)
 ```bash
@@ -73,6 +154,26 @@ gradle :app:assembleDebug      # or: ./gradlew assembleDebug if you have the wra
 # APK: app/build/outputs/apk/debug/app-debug.apk
 ```
 Requires JDK 17 + Android SDK (API 34). `minSdk 26` (Android 8+).
+
+## Screenshots
+
+> Coming soon — real device screenshots + a demo GIF. (The maintainer validates on a
+> Linux-Mint → Android workflow; PRs with screenshots on your device are very welcome!)
+
+## Roadmap
+
+See [`mobile/ROADMAP.md`](ROADMAP.md). Highlights still open: **wake word**, **memory/recall**,
+**scheduled goals**, **remote dashboard**, and **more plugins**.
+
+## Contributing
+
+Features are plugins, so the best contribution is a new one — start from
+[Write a plugin](#write-a-plugin-the-community-hook). Full guide: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
+Please read the [Code of Conduct](../CODE_OF_CONDUCT.md) and **never commit API keys**.
+
+## License
+
+[MIT](../LICENSE) — use it, fork it, ship it.
 
 ## Honest limits
 - The Accessibility Controller must be enabled once, manually (Android requires it).
