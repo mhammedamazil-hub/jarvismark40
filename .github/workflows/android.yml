@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -51,7 +51,19 @@ jobs:
 
       - name: Build debug APK
         working-directory: mobile
-        run: gradle :app:assembleDebug --no-daemon --stacktrace
+        run: |
+          set +e
+          gradle :app:assembleDebug --no-daemon --stacktrace > build.log 2>&1
+          code=$?
+          echo "===== ERROR LINES ====="
+          grep -nE "^e: |error:|FAILED|Caused by|What went wrong|Could not (resolve|download|get)|Execution failed|> Task .* FAILED" build.log | head -40 || true
+          echo "===== ANNOTATING FOR RUN PAGE ====="
+          grep -E "^e: |error:|FAILED|Caused by|What went wrong|Could not (resolve|download|get)|Execution failed" build.log | head -30 | while IFS= read -r line; do
+            echo "::error::${line}"
+          done
+          echo "===== LAST 40 LOG LINES ====="
+          tail -40 build.log
+          exit $code
 
       - name: Upload APK (workflow artifact)
         uses: actions/upload-artifact@v4
