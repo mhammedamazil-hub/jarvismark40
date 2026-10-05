@@ -1,6 +1,7 @@
 package com.jarvis.mobile
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
@@ -18,6 +19,11 @@ import android.widget.EditText
 import android.widget.Spinner
 import android.widget.Switch
 import android.widget.TextView
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 class MainActivity : Activity() {
     private lateinit var btnAccessibility: Button
@@ -42,10 +48,12 @@ class MainActivity : Activity() {
     private lateinit var edtBlockMins: EditText
     private lateinit var btnFocusStart: Button
     private lateinit var btnFocusStop: Button
+    private lateinit var btnUpdate: Button
     private lateinit var txtStatus: TextView
     private lateinit var txtLog: TextView
     private val handler = Handler(Looper.getMainLooper())
     private var lastLogCount = -1
+    private val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val prefs by lazy { getSharedPreferences("jarvis", Context.MODE_PRIVATE) }
     private val voice: VoicePlugin? get() = PluginRegistry.firstOfType(VoicePlugin::class.java)
     private val live: LivePlugin? get() = PluginRegistry.firstOfType(LivePlugin::class.java)
@@ -82,6 +90,7 @@ class MainActivity : Activity() {
         edtBlockMins = findViewById(R.id.edtBlockMins)
         btnFocusStart = findViewById(R.id.btnFocusStart)
         btnFocusStop = findViewById(R.id.btnFocusStop)
+        btnUpdate = findViewById(R.id.btnUpdate)
         txtStatus = findViewById(R.id.txtStatus)
         txtLog = findViewById(R.id.txtLog)
 
@@ -161,6 +170,7 @@ class MainActivity : Activity() {
             focus?.stopFocus()
             AgentBus.log("⛔ Focus off.")
         }
+        btnUpdate.setOnClickListener { checkForUpdates(showIfNone = true) }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
@@ -173,6 +183,37 @@ class MainActivity : Activity() {
             edtGoal.setText(g)
             if (isAccessibilityEnabled()) requestCapture()
         }
+
+        // Silently check GitHub Releases for a newer version on launch.
+        checkForUpdates(showIfNone = false)
+    }
+
+    /** Ask GitHub Releases if a newer version exists; offer to download + install it. */
+    private fun checkForUpdates(showIfNone: Boolean) {
+        btnUpdate.text = "🔄 Checking…"
+        uiScope.launch {
+            val rel = UpdateManager(this@MainActivity).check()
+            btnUpdate.text = "🔄 Check for updates"
+            if (rel == null) {
+                if (showIfNone) AgentBus.log("✅ You're on the latest version.")
+                return@launch
+            }
+            AlertDialog.Builder(this@MainActivity)
+                .setTitle("Update available — JARVIS ${rel.tag}")
+                .setMessage("A new version is ready.\n\n${rel.notes.take(280)}")
+                .setPositiveButton("Download & install") { _, _ ->
+                    UpdateManager(this@MainActivity).downloadAndInstall(rel) { err ->
+                        AgentBus.log("⬇ $err")
+                    }
+                }
+                .setNegativeButton("Later", null)
+                .show()
+        }
+    }
+
+    override fun onDestroy() {
+        uiScope.cancel()
+        super.onDestroy()
     }
 
     private fun selectedProvider(): Provider =

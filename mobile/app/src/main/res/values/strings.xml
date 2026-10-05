@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">JARVIS Mobile</string>
+    <string name="app_name">JARVIS</string>
     <string name="accessibility_label">JARVIS Controller</string>
     <string name="accessibility_desc">Lets JARVIS see the screen and tap, type and open apps to carry out your goal.</string>
     <string name="notif_channel_name">JARVIS Agent</string>

@@ -90,5 +90,14 @@ class HudView(context: Context, attrs: AttributeSet? = null) : View(context, att
         var y = 0f
         val step = base * 0.021f
         while (y < h) { canvas.drawLine(0f, y, w, y, stroke); y += step }
+
+        // HUD corner brackets — the framing that makes it read as a heads-up display
+        stroke.color = Color.parseColor("#8000E5FF"); stroke.strokeWidth = base * 0.007f
+        val m = base * 0.045f
+        val arm = base * 0.10f
+        canvas.drawLine(m, m, m + arm, m, stroke);             canvas.drawLine(m, m, m, m + arm, stroke)
+        canvas.drawLine(w - m, m, w - m - arm, m, stroke);     canvas.drawLine(w - m, m, w - m, m + arm, stroke)
+        canvas.drawLine(m, h - m, m + arm, h - m, stroke);     canvas.drawLine(m, h - m, m, h - m - arm, stroke)
+        canvas.drawLine(w - m, h - m, w - m - arm, h - m, stroke); canvas.drawLine(w - m, h - m, w - m, h - m - arm, stroke)
     }
 }

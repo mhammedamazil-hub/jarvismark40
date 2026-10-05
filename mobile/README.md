@@ -22,6 +22,7 @@ you by voice**, **sees your camera**, answers instantly, and grows through **plu
 - **Persona (.md):** drop in a Markdown file to rewrite JARVIS's entire personality + rules.
 - **Memory:** remembers facts about you across sessions, on-device, folded into every reply.
 - **Focus:** block distracting apps for N minutes — JARVIS enforces it automatically.
+- **Self-updating:** checks GitHub Releases and updates in-app — users never reinstall by hand.
 
 ## Build the APK (automatic — your plan)
 
@@ -37,6 +38,10 @@ so add it yourself through GitHub's website (where you have permission):
 2. GitHub Actions (**Actions → "Build JARVIS Mobile APK"**) builds the debug APK and
    attaches it to the **Release**. Download `app-debug.apk`.
    - You can also run the workflow manually (Run workflow) and grab the artifact.
+
+> **Users update in-app.** The app checks your GitHub Releases and offers a one-tap
+> **Update** — they don't reinstall by hand. Full release + branding + handoff steps are in
+> **[`RELEASE.md`](RELEASE.md)**.
 
 ## Install + use
 1. Copy the APK to your phone; tap it (allow "install unknown apps").
