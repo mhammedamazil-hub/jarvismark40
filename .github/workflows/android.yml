@@ -17,13 +17,31 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Install Android cmdline-tools
+        run: |
+          set -e
+          mkdir -p "$HOME/android-sdk/cmdline-tools"
+          cd "$HOME/android-sdk/cmdline-tools"
+          for V in 15859902 13114759 13114758 11076708; do
+            URL="https://dl.google.com/android/repository/commandlinetools-linux-${V}_latest.zip"
+            echo "Trying $URL"
+            if curl -fsSL --retry 3 --retry-delay 3 -o cmdtools.zip "$URL"; then
+              echo "Downloaded from $URL"
+              break
+            fi
+          done
+          test -s cmdtools.zip
+          unzip -q cmdtools.zip
+          rm -rf latest && mv cmdline-tools latest
+          rm cmdtools.zip
+          echo "ANDROID_HOME=$HOME/android-sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> "$GITHUB_ENV"
+          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
 
       - name: Install SDK platform 34 + build-tools
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" --licenses > /dev/null 2>&1 || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Install Gradle 8.7
         run: |
