@@ -10,14 +10,15 @@ import android.speech.tts.TextToSpeech
 import java.util.Locale
 
 /**
- * JARVIS's voice — the first plugin.
+ * JARVIS's voice — the plugin that makes it TALK.
  *
- *  • Text-to-speech: the agent speaks confirmations, results, and anything a plugin
- *    asks it to "say". Toggle replies from the main screen.
+ *  • Text-to-speech: the agent speaks confirmations, results, and live answers. Utterances
+ *    that arrive before the engine finishes initializing are queued and flushed, so the
+ *    first line is never dropped.
  *  • Speech-to-text: push-to-talk so you can give a goal hands-free.
  *
- * Uses the platform SpeechRecognizer + TextToSpeech, so there are no extra deps and it
- * works offline for TTS on most devices.
+ * Uses the platform SpeechRecognizer + TextToSpeech — no extra deps, and TTS works offline
+ * on virtually every device.
  */
 class VoicePlugin(private val appCtx: Context) : JarvisPlugin {
     override val id = "voice"
@@ -28,23 +29,43 @@ class VoicePlugin(private val appCtx: Context) : JarvisPlugin {
     private var recognizer: SpeechRecognizer? = null
     @Volatile private var listening = false
 
+    /** Utterances waiting for the TTS engine to finish initializing. */
+    private val pending = ArrayDeque<String>()
+    private var utteranceId = 0
+
     /** Master switch for spoken replies (bound to the UI toggle). */
     @Volatile var repliesEnabled: Boolean = true
 
     override fun onInit(ctx: Context) {
+        if (tts != null) return                 // already initialized (e.g. Activity recreated)
         tts = TextToSpeech(appCtx) { status ->
             ttsReady = status == TextToSpeech.SUCCESS
-            if (ttsReady) tts?.language = Locale.getDefault()
+            if (ttsReady) {
+                tts?.language = Locale.getDefault()
+                flushPending()
+            }
         }
     }
 
-    /** Say something out loud. Safe to call from any thread; no-op if not ready/muted. */
+    /** Say something out loud. Safe from any thread; queues until the engine is ready. */
     fun speak(text: String) {
-        if (!repliesEnabled || text.isBlank() || !ttsReady) return
+        if (!repliesEnabled || text.isBlank()) return
+        synchronized(pending) {
+            if (!ttsReady) { pending.addLast(text); return }
+        }
+        speakNow(text)
+    }
+
+    private fun speakNow(text: String) {
         // TextToSpeech caps input length, so speak in chunks queued back-to-back.
         text.chunked(3200).forEach { chunk ->
-            tts?.speak(chunk, TextToSpeech.QUEUE_ADD, null, chunk.hashCode().toString())
+            tts?.speak(chunk, TextToSpeech.QUEUE_ADD, null, "jv${utteranceId++}")
         }
+    }
+
+    private fun flushPending() {
+        val queued = synchronized(pending) { val l = pending.toList(); pending.clear(); l }
+        queued.forEach { speakNow(it) }
     }
 
     /**
@@ -104,5 +125,6 @@ class VoicePlugin(private val appCtx: Context) : JarvisPlugin {
         runCatching { tts?.stop(); tts?.shutdown() }
         runCatching { recognizer?.destroy() }
         tts = null; recognizer = null; ttsReady = false
+        synchronized(pending) { pending.clear() }
     }
 }
