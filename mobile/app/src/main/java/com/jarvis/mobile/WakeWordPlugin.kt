@@ -65,7 +65,7 @@ class WakeWordPlugin(private val ctx: Context) : JarvisPlugin {
             override fun onPartialResults(partial: Bundle?) {
                 val said = partial?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     ?.firstOrNull().orEmpty()
-                if (wakeIndex(said) >= 0) runCatching { recognizer?.stop() }
+                if (wakeIndex(said) >= 0) runCatching { recognizer?.stopListening() }
             }
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
