@@ -77,7 +77,7 @@ object ModelClient {
             append("SCREEN ELEMENTS (centre x,y):\n").append(screenSummary.ifBlank { "(none readable)" })
         }
         val images = if (p.vision) buildList { screenshotB64?.let { add(it) }; addAll(extraImages) } else emptyList()
-        val raw = complete(p, apiKey, model, SYSTEM, userText, images, 300)
+        val raw = complete(p, apiKey, model, JarvisConfig.systemPrompt(SYSTEM), userText, images, 300)
         return parse(raw)
     }
 
@@ -85,7 +85,7 @@ object ModelClient {
     fun ask(providerId: String, apiKey: String, model: String, prompt: String, images: List<String> = emptyList()): String {
         val p = Providers.byId(providerId)
         val imgs = if (p.vision) images else emptyList()
-        val raw = complete(p, apiKey, model, LIVE_SYSTEM, prompt, imgs, 400)
+        val raw = complete(p, apiKey, model, JarvisConfig.systemPrompt(LIVE_SYSTEM), prompt, imgs, 400)
         if (raw.startsWith("[HTTP")) return "I couldn't reach my brain — check the key and connection."
         return raw.ifBlank { "I didn't catch that." }
     }

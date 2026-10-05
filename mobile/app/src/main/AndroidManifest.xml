@@ -34,6 +34,11 @@
             </intent-filter>
         </activity>
 
+        <!-- Persona editor: customize the whole AI with a Markdown file -->
+        <activity
+            android:name=".PersonaActivity"
+            android:exported="false" />
+
         <!-- The eyes + hands: reads any screen and drives any app -->
         <service
             android:name=".JarvisAccessibilityService"

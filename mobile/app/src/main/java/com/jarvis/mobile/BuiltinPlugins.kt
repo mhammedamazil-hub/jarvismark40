@@ -21,6 +21,8 @@ object BuiltinPlugins {
         PluginRegistry.register(CameraPlugin(ctx.applicationContext))
         PluginRegistry.register(LivePlugin(ctx.applicationContext))
         PluginRegistry.register(WakeWordPlugin(ctx.applicationContext))
-        // Future drop-ins: MemoryPlugin, ReminderPlugin, RemotePlugin… (same pattern)
+        PluginRegistry.register(MemoryPlugin(ctx.applicationContext))
+        PluginRegistry.register(FocusPlugin(ctx.applicationContext))
+        // Future drop-ins: ReminderPlugin, RemotePlugin… (same pattern)
     }
 }

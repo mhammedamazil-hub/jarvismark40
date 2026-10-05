@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#00090E"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="🧠 Customize JARVIS"
+        android:textColor="#00E5FF"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="Paste or import a Markdown file. It rewrites JARVIS's personality and rules for every reply. Leave it empty to use the built-in default."
+        android:textColor="#9FB3B8"
+        android:textSize="12sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnImport"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="@drawable/btn_neon"
+            android:text="Import .md"
+            android:textColor="#9FF6FF" />
+
+        <Button
+            android:id="@+id/btnReset"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="@drawable/btn_neon"
+            android:text="Reset"
+            android:textColor="#9FF6FF" />
+
+        <Button
+            android:id="@+id/btnSave"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="@drawable/btn_neon"
+            android:text="Save"
+            android:textColor="#9FF6FF" />
+    </LinearLayout>
+
+    <EditText
+        android:id="@+id/edtPersona"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="12dp"
+        android:layout_weight="1"
+        android:background="#0A0A16"
+        android:fontFamily="monospace"
+        android:gravity="top|start"
+        android:hint="You are JARVIS, Tony Stark's AI. You are witty, concise, loyal…&#10;&#10;Rules:&#10;- Never lie&#10;- Keep answers under 3 sentences"
+        android:inputType="textMultiLine|textNoSuggestions"
+        android:padding="12dp"
+        android:scrollbars="vertical"
+        android:textColor="#E0F7FA"
+        android:textColorHint="#4E6A70"
+        android:textSize="13sp" />
+</LinearLayout>

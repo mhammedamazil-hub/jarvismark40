@@ -123,15 +123,6 @@ class CameraPlugin(private val ctx: Context) : JarvisPlugin {
         return Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
     }
 
-    override fun onCommand(command: String): Boolean {
-        val c = command.trim().lowercase()
-        if (c.contains("camera") || c.contains("look at") || c.contains("what do you see")) {
-            captureNow { }   // refresh latestFrameB64; live-ask will pick it up
-            return true
-        }
-        return false
-    }
-
     override fun statusLine(): String? = if (enabled) "📷 Camera ready (${if (frontFacing) "front" else "back"})" else null
 
     override fun onDestroy() {

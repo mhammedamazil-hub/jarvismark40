@@ -19,6 +19,9 @@ you by voice**, **sees your camera**, answers instantly, and grows through **plu
 - **HUD UI:** an animated arc-reactor background with neon controls — Iron-Man grade.
 - **Phone + tablet:** the layout scrolls and centers to a readable column on any screen.
 - **Plugins:** new eyes, voice commands, and tools drop in like apps.
+- **Persona (.md):** drop in a Markdown file to rewrite JARVIS's entire personality + rules.
+- **Memory:** remembers facts about you across sessions, on-device, folded into every reply.
+- **Focus:** block distracting apps for N minutes — JARVIS enforces it automatically.
 
 ## Build the APK (automatic — your plan)
 
@@ -78,6 +81,36 @@ It keeps listening so you can keep talking. (Opt-in — always-listening uses ba
   **back camera** for objects, or leave it on selfie.
 - The camera frame + the screen text are both sent to the model, so it can see what you show it.
 
+### 🧠 Customize the whole AI with a `.md` file
+Tap **🧠 Customize JARVIS** and either **Import .md** or paste your own. Everything you write
+is folded in front of JARVIS's system prompt, so it rewrites its personality, tone, and rules
+for **every** decision and reply — no rebuild, no code. Leave it empty for the built-in default.
+
+Example `persona.md`:
+```md
+You are JARVIS, Tony Stark's AI. Address me as "sir". Be witty, concise, a little sardonic.
+Rules:
+- Never lie or guess silently — say when you're unsure.
+- Keep spoken answers under 3 sentences.
+- Before any send/pay, always confirm with me.
+```
+
+### 🧠 Memory
+JARVIS remembers facts across sessions, stored **on-device only**. Just say:
+- *"Yo JARVIS, remember that I take my coffee black."*
+- *"Yo JARVIS, what do you remember?"*  ·  *"Yo JARVIS, forget everything."*
+
+Remembered facts are injected into every prompt, so it genuinely gets to know you.
+
+### ⛔ Focus mode — block distracting apps
+Set it and forget it — JARVIS enforces it automatically:
+- *"Yo JARVIS, block YouTube for 5 minutes."*
+- Or in the UI: name the apps + minutes → **Start focus**.
+
+The moment a blocked app opens, JARVIS bounces you home and flashes a full-screen
+"⛔ blocked" reminder until the timer ends. (Needs Accessibility on; the reminder needs
+"display over other apps".) Great for study/work sprints.
+
 ### Phone **and** tablet
 The layout scrolls and self-centers to a readable column on tablets (via `values-sw600dp`),
 so it's usable on both without cutting anything off.
@@ -88,7 +121,8 @@ the model **new eyes** (extra images), **new context**, **new voice commands**, 
 tools** — all merged into the agent loop automatically. Adding a feature = one `JarvisPlugin`
 class + one line in `BuiltinPlugins.install()`.
 
-Shipped plugins: **Voice**, **Camera**, **Live**. See [the roadmap](ROADMAP.md) for what's next.
+Shipped plugins: **Voice**, **Camera**, **Live**, **Wake word**, **Memory**, **Focus**.
+See [the roadmap](ROADMAP.md) for what's next.
 
 ## Write a plugin (the community hook)
 

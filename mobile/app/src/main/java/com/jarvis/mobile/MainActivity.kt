@@ -37,6 +37,11 @@ class MainActivity : Activity() {
     private lateinit var switchBackCam: Switch
     private lateinit var switchWake: Switch
     private lateinit var switchSpeakSteps: Switch
+    private lateinit var btnPersona: Button
+    private lateinit var edtBlockApps: EditText
+    private lateinit var edtBlockMins: EditText
+    private lateinit var btnFocusStart: Button
+    private lateinit var btnFocusStop: Button
     private lateinit var txtStatus: TextView
     private lateinit var txtLog: TextView
     private val handler = Handler(Looper.getMainLooper())
@@ -46,6 +51,7 @@ class MainActivity : Activity() {
     private val live: LivePlugin? get() = PluginRegistry.firstOfType(LivePlugin::class.java)
     private val cam: CameraPlugin? get() = PluginRegistry.firstOfType(CameraPlugin::class.java)
     private val wake: WakeWordPlugin? get() = PluginRegistry.firstOfType(WakeWordPlugin::class.java)
+    private val focus: FocusPlugin? get() = PluginRegistry.firstOfType(FocusPlugin::class.java)
 
     private val poller = object : Runnable {
         override fun run() { refreshA11y(); refreshStatus(); refreshLog(); handler.postDelayed(this, 500) }
@@ -71,12 +77,21 @@ class MainActivity : Activity() {
         switchBackCam = findViewById(R.id.switchBackCam)
         switchWake = findViewById(R.id.switchWake)
         switchSpeakSteps = findViewById(R.id.switchSpeakSteps)
+        btnPersona = findViewById(R.id.btnPersona)
+        edtBlockApps = findViewById(R.id.edtBlockApps)
+        edtBlockMins = findViewById(R.id.edtBlockMins)
+        btnFocusStart = findViewById(R.id.btnFocusStart)
+        btnFocusStop = findViewById(R.id.btnFocusStop)
         txtStatus = findViewById(R.id.txtStatus)
         txtLog = findViewById(R.id.txtLog)
 
         // Boot the plugin system (voice first; camera/live are future plugins).
         BuiltinPlugins.install(this)
         PluginRegistry.init(this)
+
+        // Load the custom persona (.md) so it shapes every reply.
+        val pf = java.io.File(filesDir, "persona.md")
+        if (pf.exists()) JarvisConfig.persona = pf.readText().trim()
 
         spinnerProvider.adapter = ArrayAdapter(
             this, android.R.layout.simple_spinner_dropdown_item, Providers.all.map { it.label }
@@ -130,6 +145,21 @@ class MainActivity : Activity() {
                 w?.stop()
                 AgentBus.log("🎧 Wake word OFF")
             }
+        }
+
+        // Persona editor + Focus (app blocking).
+        btnPersona.setOnClickListener { startActivity(Intent(this, PersonaActivity::class.java)) }
+        btnFocusStart.setOnClickListener {
+            val apps = edtBlockApps.text.toString().split(",", " and ")
+                .map { it.trim() }.filter { it.isNotEmpty() }
+            val mins = edtBlockMins.text.toString().toIntOrNull() ?: 5
+            if (apps.isEmpty()) { AgentBus.log("⛔ List apps to block, e.g. YouTube, Instagram"); return@setOnClickListener }
+            val f = focus ?: return@setOnClickListener
+            AgentBus.log("⛔ " + f.startFocus(apps, mins))
+        }
+        btnFocusStop.setOnClickListener {
+            focus?.stopFocus()
+            AgentBus.log("⛔ Focus off.")
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -247,28 +277,36 @@ class MainActivity : Activity() {
             voice?.speak("Yes?")
             btnAsk.text = "🎙 Listening…"
             voice?.listen(
-                onResult = { q -> btnAsk.text = "⚡ Ask JARVIS"; run(q) },
+                onResult = { q ->
+                    btnAsk.text = "⚡ Ask JARVIS"
+                    if (PluginRegistry.onCommand(q.lowercase())) return@listen  // a plugin handled it
+                    run(q)
+                },
                 onError = { err -> btnAsk.text = "⚡ Ask JARVIS"; AgentBus.log("🎙 $err") }
             )
         }
     }
 
     /**
-     * Route a wake-word command to the right kind of answer: camera ("what is this?"),
-     * screen help ("what do I do?"), or a general question. All answered aloud by Live.
+     * Route a wake-word command: strip the wake phrase, let plugins handle it first
+     * (memory "remember…", "block youtube…", "say…"), else fall back to a screen/camera/
+     * general live answer.
      */
     private fun handleVoiceCommand(cmd: String) {
-        val c = cmd.lowercase()
+        val stripped = cmd.lowercase()
+            .removePrefix("yo ").removePrefix("hey ").removePrefix("hi ").removePrefix("jarvis").trim()
+        if (stripped.isEmpty()) return
+        if (PluginRegistry.onCommand(stripped)) { AgentBus.log("🎧 handled: $stripped"); return }
         val question = when {
-            c.contains("camera") || c.contains("what is this") || c.contains("what's this") ||
-                c.contains("this object") || c.contains("look at") && c.contains("camera") ->
+            stripped.contains("camera") || stripped.contains("what is this") || stripped.contains("what's this") ||
+                stripped.contains("this object") ->
                 "Look at what I'm showing you on the camera and tell me what this object is, briefly."
-            c.contains("screen") || c.contains("what do i do") || c.contains("what should i") ||
-                c.contains("help me") || c.contains("read this") ->
+            stripped.contains("screen") || stripped.contains("what do i do") || stripped.contains("what should i") ||
+                stripped.contains("help me") || stripped.contains("read this") ->
                 "Look at my screen and tell me what I should do next, briefly."
-            else -> cmd   // general question — Live still includes screen + camera
+            else -> stripped
         }
-        AgentBus.log("🎧 \"$cmd\"")
+        AgentBus.log("🎧 \"$stripped\"")
         askJarvis(spoken = false, fixedQuestion = question)
     }
 

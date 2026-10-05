@@ -32,6 +32,9 @@ class JarvisAccessibilityService : AccessibilityService() {
     companion object {
         @Volatile var instance: JarvisAccessibilityService? = null
         private const val TAG = "JarvisA11y"
+        /** Package currently in the foreground, and a hook so plugins (e.g. focus) can react. */
+        @Volatile var currentForeground: String = ""
+        @Volatile var foregroundListener: ((String) -> Unit)? = null
         fun isRunning() = instance != null
     }
 
@@ -41,7 +44,15 @@ class JarvisAccessibilityService : AccessibilityService() {
         Log.i(TAG, "connected")
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) { /* polled on demand */ }
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val pkg = event.packageName?.toString()
+            if (!pkg.isNullOrBlank() && pkg != currentForeground) {
+                currentForeground = pkg
+                runCatching { foregroundListener?.invoke(pkg) }
+            }
+        }
+    }
     override fun onInterrupt() {}
 
     override fun onUnbind(intent: Intent?): Boolean {
@@ -123,19 +134,21 @@ class JarvisAccessibilityService : AccessibilityService() {
         return target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
     }
 
-    /** Open an app by (partial) name. Needs QUERY_ALL_PACKAGES (declared). */
-    fun launchApp(name: String): Boolean {
+    /** Resolve a (partial) app name to a package, or null. Needs QUERY_ALL_PACKAGES. */
+    fun resolvePackage(name: String): String? {
         val pm = packageManager
         val pkgs = try {
             pm.getInstalledApplications(PackageManager.GET_META_DATA)
-        } catch (e: Exception) { return false }
+        } catch (e: Exception) { return null }
         val q = name.trim().lowercase()
-        var pkg = pkgs.firstOrNull { pm.getApplicationLabel(it).toString().lowercase().contains(q) }?.packageName
-        if (pkg == null) {
-            pkg = pkgs.firstOrNull { it.packageName.lowercase().contains(q.replace(" ", "")) }?.packageName
-        }
-        pkg ?: return false
-        val intent = pm.getLaunchIntentForPackage(pkg) ?: return false
+        return pkgs.firstOrNull { pm.getApplicationLabel(it).toString().lowercase().contains(q) }?.packageName
+            ?: pkgs.firstOrNull { it.packageName.lowercase().contains(q.replace(" ", "")) }?.packageName
+    }
+
+    /** Open an app by (partial) name. */
+    fun launchApp(name: String): Boolean {
+        val pkg = resolvePackage(name) ?: return false
+        val intent = packageManager.getLaunchIntentForPackage(pkg) ?: return false
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         startActivity(intent)
         return true

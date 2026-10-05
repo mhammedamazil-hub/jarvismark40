@@ -16,6 +16,9 @@ welcome on any of it.
 - **Wake word** — hands-free "Yo JARVIS…" routes to screen / camera / general answers.
 - **Camera plugin** — "look at what I'm showing you" (front/back, on-demand frame).
 - **Live plugin** — instant see-screen(+camera)-and-answer, spoken.
+- **Memory plugin** — remembers facts across sessions, on-device, folded into every prompt.
+- **Focus plugin** — block distracting apps for N minutes, enforced automatically.
+- **Persona (.md)** — a Markdown file that rewrites JARVIS's whole personality + rules.
 - **9 providers** — OpenRouter, Gemini, OpenAI, NVIDIA NIM, Anthropic, Groq, Together, Mistral, DeepSeek.
 - **HUD UI** — animated arc-reactor background + neon controls (Iron-Man grade).
 - **Plugin architecture** — a feature is one `JarvisPlugin` + one line.
@@ -23,7 +26,7 @@ welcome on any of it.
 
 ## 🔜 Next (great first contributions)
 
-- **Memory / recall** — remember preferences and past goals (persisted, on-device).
+- **Scheduled goals** — "every morning at 8, open X and …" (WorkManager).
 - **Scheduled goals** — "every morning at 8, open X and …" (WorkManager).
 - **Remote dashboard** — control from a laptop/browser over local network (QR pair).
 - **Live watch mode** — continuous proactive help (opt-in; watch the API cost).
