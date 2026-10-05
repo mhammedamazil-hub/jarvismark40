@@ -7,7 +7,6 @@ import os
 import sys
 import time
 import threading
-import cv2
 import mss
 import mss.tools
 import sounddevice as sd
@@ -64,6 +63,7 @@ def _get_api_key() -> str:
 
 
 def _get_camera_index() -> int:
+    import cv2
     try:
         with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
             cfg = json.load(f)
@@ -76,7 +76,7 @@ def _get_camera_index() -> int:
     best_index = 0
 
     for idx in range(6):
-        cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
+        cap = cv2.VideoCapture(idx, getattr(cv2, "CAP_DSHOW", cv2.CAP_ANY))
         if not cap.isOpened():
             cap.release()
             continue
@@ -124,8 +124,9 @@ def _capture_screenshot() -> bytes:
 
 
 def _capture_camera() -> bytes:
+    import cv2
     camera_index = _get_camera_index()
-    cap = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)
+    cap = cv2.VideoCapture(camera_index, getattr(cv2, "CAP_DSHOW", cv2.CAP_ANY))
     if not cap.isOpened():
         raise RuntimeError(f"Camera could not be opened: index {camera_index}")
     for _ in range(10):
@@ -341,6 +342,126 @@ def screen_process(
     print(f"[ScreenProcess] 📦 {len(image_bytes)} bytes → sending")
     _live.analyze(image_bytes, mime_type, user_text)
     return True
+
+
+# ── Real-time camera vision ─────────────────────────────────────────────────
+class _CameraStream:
+    """Continuously grabs webcam frames and keeps the latest one hot so JARVIS
+    can answer 'what do you see?' against the live view, and (optionally)
+    narrate the scene. Low-cost by default: frames are held locally and only
+    sent to the vision model on demand or when narrating."""
+
+    def __init__(self):
+        self._thread         = None
+        self._stop           = threading.Event()
+        self._running        = False
+        self._fps            = 2.0
+        self._narrate        = False
+        self._narrate_every  = 4.0
+        self._player         = None
+        self._speak          = None
+        self._latest         = None
+        self._latest_lock    = threading.Lock()
+
+    def is_running(self) -> bool:
+        return self._running
+
+    def latest_frame(self):
+        with self._latest_lock:
+            return self._latest
+
+    def start(self, speak=None, player=None, fps: float = 2.0, narrate: bool = False) -> str:
+        if self._running:
+            return "The camera is already online, sir."
+        self._speak = speak
+        self._player = player
+        self._fps = max(0.25, min(5.0, float(fps)))
+        self._narrate = narrate
+        self._stop.clear()
+        try:
+            _ensure_started(player=player)
+        except Exception as e:
+            self._running = False
+            return f"I couldn't bring the vision session online, sir: {e}"
+        self._running = True
+        self._thread = threading.Thread(target=self._loop, daemon=True, name="CameraStream")
+        self._thread.start()
+        mode = "and I'll describe what I see" if narrate else "ask me anything about what I see"
+        return f"Camera online, sir — {mode}."
+
+    def stop(self) -> str:
+        if not self._running:
+            return "The camera isn't running, sir."
+        self._stop.set()
+        self._running = False
+        return "Camera offline, sir."
+
+    def _loop(self):
+        interval = 1.0 / self._fps
+        last_narrate = 0.0
+        first = True
+        while not self._stop.is_set():
+            try:
+                jpeg = _capture_camera()
+                with self._latest_lock:
+                    self._latest = jpeg
+                if first:
+                    first = False
+                    if self._player and hasattr(self._player, "write_log"):
+                        self._player.write_log("[Camera] stream live")
+                if self._narrate and _live.is_ready():
+                    now = time.monotonic()
+                    if now - last_narrate >= self._narrate_every:
+                        last_narrate = now
+                        _live.analyze(jpeg, "image/jpeg",
+                                      "In one short sentence, describe what you currently see. Address the user as sir.")
+            except Exception as e:
+                print(f"[CameraStream] frame error: {e}")
+                if first:
+                    if self._speak:
+                        self._speak("I couldn't access the camera, sir.")
+                    self._running = False
+                    return
+            self._stop.wait(interval)
+
+
+_camera = _CameraStream()
+
+
+def is_camera_streaming() -> bool:
+    return _camera.is_running()
+
+
+def start_camera_stream(speak=None, player=None, fps: float = 2.0, narrate: bool = False) -> str:
+    return _camera.start(speak=speak, player=player, fps=fps, narrate=narrate)
+
+
+def stop_camera_stream() -> str:
+    return _camera.stop()
+
+
+def camera_look(question: str = "What do you see right now?", player=None) -> str:
+    """Answer a question about the current camera view (freshest frame, or a
+    fresh grab if the stream isn't running). The vision session speaks the answer."""
+    try:
+        _ensure_started(player=player)
+    except Exception as e:
+        return f"Vision session unavailable, sir: {e}"
+
+    frame = _camera.latest_frame()
+    if frame is None:
+        try:
+            frame = _capture_camera()
+        except Exception as e:
+            return f"I couldn't access the camera, sir: {e}"
+
+    if not _live.is_ready():
+        return "The vision session is still connecting, sir — try again in a moment."
+
+    _live.analyze(frame, "image/jpeg", question)
+    if player and hasattr(player, "write_log"):
+        player.write_log("[Camera] looking…")
+    return "Looking now, sir."
 
 
 def warmup_session(player=None):

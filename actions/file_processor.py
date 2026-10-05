@@ -21,6 +21,7 @@ import re
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from datetime import datetime
@@ -292,9 +293,8 @@ def _process_text_doc(path: Path, file_type: str, action: str,
     }
 
     if action not in prompt_map:
-
-        action  = "custom"
-        instruction = action
+        action = "custom"
+        instruction = params.get("instruction", "") or action
 
     try:
         model    = _gemini_client()
@@ -390,7 +390,7 @@ def _process_data(path: Path, file_type: str, action: str,
         asc = params.get("ascending", True)
         try:
             sorted_df = df.sort_values(col, ascending=asc)
-            out = _output_path(path, "sorted", path.suffix)
+            out = _output_path(path, "sorted", ".csv")
             sorted_df.to_csv(out, index=False)
             return f"Sorted by '{col}'. Saved: {out.name}"
         except Exception as e:
@@ -458,7 +458,7 @@ def _process_code(path: Path, action: str, params: dict, speak=None) -> str:
         if ext == "py":
             try:
                 result = subprocess.run(
-                    ["python", str(path)],
+                    [sys.executable, str(path)],
                     capture_output=True, text=True, timeout=30
                 )
                 out = result.stdout or result.stderr

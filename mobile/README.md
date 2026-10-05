@@ -1,0 +1,255 @@
+# JARVIS Mobile — standalone phone agent
+
+<p align="center"><img src="docs/banner.jpg" alt="JARVIS Mobile concept banner" width="720"></p>
+
+An Android app that **sees your screen and drives any app** to reach a goal you type
+("open WhatsApp and message Ravi 'on my way'", "open Chrome and search logo design").
+It thinks for itself with an online vision model you pick (OpenRouter or Gemini), **talks to
+you by voice**, **sees your camera**, answers instantly, and grows through **plugins** —
+**no laptop needed**.
+
+- **Eyes:** screenshots (MediaProjection) + the screen's text/buttons (Accessibility) + your camera.
+- **Hands:** taps / swipes / typing / launching apps via the Accessibility Service
+  (this is Android's equivalent of `pyautogui`).
+- **Brain:** pick a provider + key + model in-app — OpenRouter, Google Gemini, OpenAI,
+  NVIDIA NIM, Anthropic Claude, Groq, Together, Mistral, DeepSeek (9 and counting).
+- **Voice:** push-to-talk goals; a hands-free **"Yo JARVIS…"** wake word; JARVIS speaks
+  replies, confirmations, and answers.
+- **Live + camera:** ask it anything — it looks at your screen (+ camera) and answers aloud.
+- **HUD UI:** an animated arc-reactor background with neon controls — Iron-Man grade.
+- **Phone + tablet:** the layout scrolls and centers to a readable column on any screen.
+- **Plugins:** new eyes, voice commands, and tools drop in like apps.
+- **Persona (.md):** drop in a Markdown file to rewrite JARVIS's entire personality + rules.
+- **Memory:** remembers facts about you across sessions, on-device, folded into every reply.
+- **Focus:** block distracting apps for N minutes — JARVIS enforces it automatically.
+- **Self-updating:** checks GitHub Releases and updates in-app — users never reinstall by hand.
+
+## Build the APK (automatic — your plan)
+
+**One-time setup — install the workflow (30 seconds):**
+The automation token used to push this repo can't write to `.github/workflows/`,
+so add it yourself through GitHub's website (where you have permission):
+1. Open the repo → **Add file → Create new file**.
+2. Name it exactly `.github/workflows/android.yml`.
+3. Paste the contents of [`mobile/ci/android-build.yml`](ci/android-build.yml) and **Commit**.
+
+**Then, every release:**
+1. Push a version tag: `git tag v1.0.0 && git push origin v1.0.0`
+2. GitHub Actions (**Actions → "Build JARVIS Mobile APK"**) builds the debug APK and
+   attaches it to the **Release**. Download `app-debug.apk`.
+   - You can also run the workflow manually (Run workflow) and grab the artifact.
+
+> **Users update in-app.** The app checks your GitHub Releases and offers a one-tap
+> **Update** — they don't reinstall by hand. Full release + branding + handoff steps are in
+> **[`RELEASE.md`](RELEASE.md)**.
+
+## Install + use
+1. Copy the APK to your phone; tap it (allow "install unknown apps").
+2. Open **JARVIS Mobile**.
+3. **Step 1** — tap *Enable JARVIS Controller* → in Accessibility, turn on
+   **JARVIS Controller**. (One time. This is what lets it see + drive apps.)
+4. Pick a **provider** and paste its key (the box tells you where to get one):
+   **OpenRouter**, **Gemini**, **OpenAI**, **NVIDIA NIM**, **Anthropic Claude**, **Groq**,
+   **Together**, **Mistral**, or **DeepSeek**. The model field auto-fills a good vision
+   default (edit it freely). Any cheap vision model works.
+5. Leave **🔒 Confirm before sending** ON — JARVIS pauses for your Yes/No before
+   it types or sends anything (shown on the floating bubble).
+6. Type a **goal**, tap **Start**, and approve the screen-capture prompt. It works
+   while you use other apps. **Stop** ends it.
+
+### Floating bubble (use it from inside any app)
+Tap **Show floating bubble** and allow **"Display over other apps"**. A draggable
+**◉ JARVIS** bubble now floats on top of everything — tap it, type a goal, hit
+**Start**, and it drives your phone without you opening the app again.
+
+
+### 🎙 Voice — talk to it, it talks back
+- **Speak goal** (push-to-talk): tap, say your goal, and it fills the box and starts —
+  hands-free. (First run asks for the microphone permission.)
+- **JARVIS speaks its replies**: it says confirmations ("JARVIS wants to send 'on my way'.
+  Proceed?") and the final "Goal complete." / "Stopped." out loud. Toggle it off anytime.
+- **Narrate every step**: flip "🗣 Narrate every step" and JARVIS calls out each action live.
+
+### 🎧 Wake word — "Yo JARVIS…"
+Turn on **Wake word** and just talk to your phone from anywhere:
+- *"Yo JARVIS, look at my screen and tell me what to do."*
+- *"Yo JARVIS, look at the camera — what is this object?"*
+- *"Yo JARVIS, what's on my screen?"*
+
+It hears the wake phrase, reads your screen (+ camera), thinks, and answers **out loud**.
+It keeps listening so you can keep talking. (Opt-in — always-listening uses battery.)
+
+### ⚡ Live + 📷 Camera — the real JARVIS moment
+- **Ask JARVIS (mic):** tap, ask anything ("what's on my screen?", "summarize this page"),
+  and it reads your screen, thinks, and **answers out loud** — no multi-step goal needed.
+- **Look at camera:** point your camera at something and it describes it. Toggle
+  **back camera** for objects, or leave it on selfie.
+- The camera frame + the screen text are both sent to the model, so it can see what you show it.
+
+### 🧠 Customize the whole AI with a `.md` file
+Tap **🧠 Customize JARVIS** and either **Import .md** or paste your own. Everything you write
+is folded in front of JARVIS's system prompt, so it rewrites its personality, tone, and rules
+for **every** decision and reply — no rebuild, no code. Leave it empty for the built-in default.
+
+Example `persona.md`:
+```md
+You are JARVIS, Tony Stark's AI. Address me as "sir". Be witty, concise, a little sardonic.
+Rules:
+- Never lie or guess silently — say when you're unsure.
+- Keep spoken answers under 3 sentences.
+- Before any send/pay, always confirm with me.
+```
+
+### 🧠 Memory
+JARVIS remembers facts across sessions, stored **on-device only**. Just say:
+- *"Yo JARVIS, remember that I take my coffee black."*
+- *"Yo JARVIS, what do you remember?"*  ·  *"Yo JARVIS, forget everything."*
+
+Remembered facts are injected into every prompt, so it genuinely gets to know you.
+
+### ⛔ Focus mode — block distracting apps
+Set it and forget it — JARVIS enforces it automatically:
+- *"Yo JARVIS, block YouTube for 5 minutes."*
+- Or in the UI: name the apps + minutes → **Start focus**.
+
+The moment a blocked app opens, JARVIS bounces you home and flashes a full-screen
+"⛔ blocked" reminder until the timer ends. (Needs Accessibility on; the reminder needs
+"display over other apps".) Great for study/work sprints.
+
+### Phone **and** tablet
+The layout scrolls and self-centers to a readable column on tablets (via `values-sw600dp`),
+so it's usable on both without cutting anything off.
+
+### 🔌 Plugins — add features like apps
+JARVIS is built on a tiny plugin host (`JarvisPlugin` + `PluginRegistry`). A plugin can give
+the model **new eyes** (extra images), **new context**, **new voice commands**, and **its own
+tools** — all merged into the agent loop automatically. Adding a feature = one `JarvisPlugin`
+class + one line in `BuiltinPlugins.install()`.
+
+Shipped plugins: **Voice**, **Camera**, **Live**, **Wake word**, **Memory**, **Focus**.
+See [the roadmap](ROADMAP.md) for what's next.
+
+## Write a plugin (the community hook)
+
+A plugin is a single class implementing `JarvisPlugin`, registered in
+`BuiltinPlugins.install()`. Copy this starter into a new file under
+`app/src/main/java/com/jarvis/mobile/`:
+
+```kotlin
+class GreeterPlugin(private val ctx: Context) : JarvisPlugin {
+    override val id = "greeter"
+    override val displayName = "Greeter"
+
+    // Advertise a tool the model knows it can ask for.
+    override fun tools() = listOf(PluginTool("greet", "Say a friendly greeting"))
+
+    // Runs every agent step. Add vision (images), prompt context, or a line to speak.
+    override fun onFrame(frame: AgentFrame): PluginContribution {
+        if (frame.goal.contains("greet", ignoreCase = true))
+            return PluginContribution(context = "The user wants a warm greeting.")
+        return PluginContribution()
+    }
+
+    // Handle a spoken/typed command.
+    override fun onCommand(command: String): Boolean {
+        if (command.trim().lowercase().startsWith("greet")) {
+            PluginRegistry.firstOfType(VoicePlugin::class.java)?.speak("Good to see you.")
+            return true
+        }
+        return false
+    }
+}
+```
+
+Then register it:
+
+```kotlin
+// BuiltinPlugins.install()
+PluginRegistry.register(GreeterPlugin(ctx.applicationContext))
+```
+
+That's it — the agent loop, UI, and voice all pick it up automatically. One plugin failing
+never crashes the loop (every hook is guarded).
+
+## How it works
+
+```
+   you ──▶ goal / "ask" ─┐
+                         ▼
+  ┌─────────────── MainActivity ───────────────┐        ┌──────────── Plugins ────────────┐
+  │  Spinner(provider)  Key  Model  Confirm    │        │ Voice · Camera · Live · …        │
+  └───────┬───────────────────────┬────────────┘        │  (add eyes/context/commands)     │
+          │ Start                 │ Ask/Look            └───────────────┬──────────────────┘
+          ▼                       ▼                                    │ vision + context
+   AgentService            LivePlugin.ask()                             ▼
+   (foreground loop)             │                             ModelClient.ask()
+          │                      │                                    ▲
+   read screen (a11y)            │                                    │
+   + screenshot (MediaProj.)      │                             ModelClient.decide()
+          │                      │                                    │ one JSON action
+          └──────────► ModelClient.decide() ◄────────────────────────┘
+                              │
+                    JarvisAccessibilityService → tap/swipe/type/launch
+                              │
+                     confirm-before-send? ──▶ bubble asks Yes/No
+```
+
+- **AgentService** runs the see→think→act loop in the foreground (survives leaving the app).
+- **ModelClient** speaks to OpenRouter or Gemini (same request shape) — `decide()` returns one
+  device action, `ask()` returns a spoken answer.
+- **BubbleService** floats over any app and hosts the confirm dialog.
+- Every risky step (type / send / pay / delete) pauses for your approval.
+
+## Build locally (optional)
+```bash
+cd mobile
+gradle :app:assembleDebug      # or: ./gradlew assembleDebug if you have the wrapper
+# APK: app/build/outputs/apk/debug/app-debug.apk
+```
+Requires JDK 17 + Android SDK (API 34). `minSdk 26` (Android 8+).
+
+## Providers
+
+Pick any of these in the app — key + model are editable, defaults auto-fill:
+
+| Provider | Default model | Get a key |
+|---|---|---|
+| OpenRouter | `openai/gpt-4o-mini` | openrouter.ai/keys |
+| Google Gemini | `gemini-2.0-flash` | aistudio.google.com/app/apikey |
+| OpenAI | `gpt-4o-mini` | platform.openai.com/api-keys |
+| NVIDIA NIM | `meta/llama-3.2-90b-vision-instruct` | build.nvidia.com |
+| Anthropic Claude | `claude-3-5-haiku-latest` | console.anthropic.com |
+| Groq | `llama-3.2-90b-vision-preview` | console.groq.com/keys |
+| Together AI | `meta-llama/Llama-3.2-11b-Vision-Instruct-Turbo` | api.together.xyz |
+| Mistral | `pixtral-12b-2409` | console.mistral.ai/api-keys |
+| DeepSeek (text-only) | `deepseek-chat` | platform.deepseek.com |
+
+Adding a provider = one entry in `Providers.kt`. Both OpenAI-compatible and Anthropic-style
+APIs are handled automatically. **Never commit keys** — they stay on the device.
+
+## Screenshots
+
+> Coming soon — real device screenshots + a demo GIF. (The maintainer validates on a
+> Linux-Mint → Android workflow; PRs with screenshots on your device are very welcome!)
+
+## Roadmap
+
+See [`mobile/ROADMAP.md`](ROADMAP.md). Highlights still open: **wake word**, **memory/recall**,
+**scheduled goals**, **remote dashboard**, and **more plugins**.
+
+## Contributing
+
+Features are plugins, so the best contribution is a new one — start from
+[Write a plugin](#write-a-plugin-the-community-hook). Full guide: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
+Please read the [Code of Conduct](../CODE_OF_CONDUCT.md) and **never commit API keys**.
+
+## License
+
+[MIT](../LICENSE) — use it, fork it, ship it.
+
+## Honest limits
+- The Accessibility Controller must be enabled once, manually (Android requires it).
+- Needs internet (the model is online). Costs a little per step (cheap model ≈ pennies).
+- Banking / secure apps detect accessibility and block it — can't and shouldn't bypass.
+- Screenshot capture asks for consent each time you Start (Android rule).
+- Android only (APK). iOS would be a separate, more locked-down project.

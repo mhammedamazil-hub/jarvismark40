@@ -94,6 +94,25 @@ def _compare(items: list[str], aspect: str) -> str:
                 lines.append(f"  • {r['snippet']}")
     return "\n".join(lines)
 
+def _ai_summary(query: str, results: list[dict]) -> str:
+    """Optional 2-3 sentence answer synthesized strictly from the search results."""
+    try:
+        from or_client import client
+        ctx = "\n".join(
+            f"- {r.get('title', '')}: {r.get('snippet', '')}"
+            for r in results[:5] if r.get("snippet")
+        )
+        if not ctx:
+            return ""
+        return client.chat(
+            f"Using ONLY the search results below, answer in 2-3 sentences: {query}\n\n{ctx}",
+            system="Answer concisely using only the provided results. Do not invent facts.",
+            max_tokens=300,
+        )
+    except Exception:
+        return ""
+
+
 def web_search(
     parameters:     dict,
     response=None,
@@ -116,22 +135,36 @@ def web_search(
         player.write_log(f"[Search] {query or ', '.join(items)}")
 
     print(f"[WebSearch] 🔍 Query: {query!r}  Mode: {mode}")
-# replace: result = _gemini_search(query) block with:
+
+    # Compare mode → dedicated grounded comparison.
+    if mode == "compare" and items:
+        return _compare(items, aspect)
+
+    # Normal search → prefer grounded results WITH sources.
+    # 1) DuckDuckGo (free, real sources), optionally topped with a short AI answer.
+    try:
+        results = _ddg_search(query, max_results=6)
+        if results:
+            summary    = _ai_summary(query, results)
+            formatted  = _format_ddg(query, results)
+            print(f"[WebSearch] ✅ DDG: {len(results)} result(s).")
+            return f"{summary}\n\n{formatted}" if summary else formatted
+    except Exception as e:
+        print(f"[WebSearch] ⚠️ DDG failed: {e}")
+
+    # 2) Gemini grounded search (google_search tool) — real, sourced.
+    try:
+        return _gemini_search(query)
+    except Exception as e:
+        print(f"[WebSearch] ⚠️ Gemini search failed: {e}")
+
+    # 3) Last resort: ungrounded LLM answer.
     try:
         from or_client import client
-        result = client.chat(
+        return client.chat(
             query,
-            system="You are a web search assistant. Answer factually and concisely."
+            system="You are a web search assistant. Answer factually and concisely. If unsure, say so.",
         )
-        print("[WebSearch] ✅ OpenRouter OK.")
-        return result
-    except Exception as e:
-        print(f"[WebSearch] ⚠️ OpenRouter failed ({e}) — trying DDG...")
-        results = _ddg_search(query)
-        result  = _format_ddg(query, results)
-        print(f"[WebSearch] ✅ DDG: {len(results)} result(s).")
-        return result
-    
     except Exception as e:
         print(f"[WebSearch] ❌ All backends failed: {e}")
         return f"Search failed, sir: {e}"

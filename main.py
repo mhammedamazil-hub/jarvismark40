@@ -3,16 +3,94 @@ import threading
 import json
 import sys
 import traceback
+import re
 from pathlib import Path
 
-import sounddevice as sd
+
+def _bootstrap() -> None:
+    """Make `python main.py` work after a plain download — no manual steps.
+
+    1) If the project has a venv/ and we're not already inside it, re-exec under
+       it, so installed deps are used WITHOUT `source venv/bin/activate`.
+    2) If there's no venv and required packages are missing, offer the one-time
+       setup (setup-linux.sh) or a pip install, then re-exec.
+    """
+    import os
+    import subprocess
+    import importlib.util
+
+    here = Path(__file__).resolve().parent
+    venv_dir = here / "venv"
+    venv_py = venv_dir / "bin" / "python"
+
+    # (1) prefer the project venv when it exists
+    if venv_py.exists():
+        try:
+            if Path(sys.prefix).resolve() != venv_dir.resolve():
+                print("[JARVIS] Launching inside the project virtual environment (venv/)…")
+                os.execv(str(venv_py), [str(venv_py), *sys.argv])
+        except Exception as e:
+            print(f"[JARVIS] Could not switch to venv ({e}); continuing with this interpreter.")
+        return  # already inside the venv
+
+    # (2) no venv — are the deps importable in this interpreter already?
+    required = ["sounddevice", "google.genai", "PyQt6.QtCore", "PyQt6.QtWidgets",
+                "requests", "psutil", "numpy", "PIL", "mss"]
+    missing = [m for m in required if importlib.util.find_spec(m) is None]
+    if not missing:
+        return
+
+    print("=" * 70)
+    print("  J.A.R.V.I.S — first-run setup")
+    print("  Missing Python packages: " + ", ".join(missing))
+    print("  One-time fix:  bash setup-linux.sh")
+    print("    (installs system libraries + Python deps into venv/; afterwards")
+    print("     `python main.py` just works)")
+    print("=" * 70)
+    try:
+        ans = input("  Run the automatic setup now? [Y/n] ").strip().lower()
+    except EOFError:
+        ans = "y"
+    if ans in ("", "y", "yes"):
+        setup = here / "setup-linux.sh"
+        try:
+            if setup.exists():
+                subprocess.call(["bash", str(setup)])
+                if venv_py.exists():
+                    print("\n[JARVIS] Setup done — relaunching inside the new venv…")
+                    os.execv(str(venv_py), [str(venv_py), *sys.argv])
+            else:
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "-r",
+                                       str(here / "requirements.txt")])
+                os.execv(sys.executable, [sys.executable, *sys.argv])
+        except Exception as e:
+            print(f"[JARVIS] Automatic setup failed: {e}")
+    print("\n[JARVIS] Please run:  bash setup-linux.sh   then:  python main.py")
+    sys.exit(1)
+
+
+_bootstrap()
+
+try:
+    import sounddevice as sd
+except Exception as _e:  # noqa: BLE001 - usually a missing system lib (PortAudio)
+    print("[JARVIS] Audio backend failed to load "
+          f"({_e}).\n         Install the system library:  bash setup-linux.sh")
+    sys.exit(1)
+
 from google import genai
 from google.genai import types
-from ui import JarvisUI
+try:
+    from ui import JarvisUI
+except Exception as _e:  # noqa: BLE001 - usually missing Qt system libraries
+    print("[JARVIS] The interface failed to load "
+          f"({_e}).\n         Install the system libraries:  bash setup-linux.sh")
+    sys.exit(1)
 from memory.memory_manager import (
     load_memory, update_memory, format_memory_for_prompt,
     should_extract_memory, extract_memory
 )
+from config.settings import is_serious, set_serious, compose_persona, SERIOUS_PERSONA
 
 from actions.file_processor import file_processor
 from actions.flight_finder     import flight_finder
@@ -21,7 +99,8 @@ from actions.weather_report    import weather_action
 from actions.send_message      import send_message
 from actions.reminder          import reminder
 from actions.computer_settings import computer_settings
-from actions.screen_processor  import screen_process
+from actions.screen_processor  import (screen_process, start_camera_stream,
+                                        stop_camera_stream, camera_look)
 from actions.youtube_video     import youtube_video
 from actions.desktop           import desktop_control
 from actions.browser_control   import browser_control
@@ -31,6 +110,10 @@ from actions.dev_agent         import dev_agent
 from actions.web_search        import web_search as web_search_action
 from actions.computer_control  import computer_control
 from actions.game_updater      import game_updater
+from actions.video_player      import play_video, stop_video
+from actions.gods_eye          import gods_eye
+from actions.outreach          import outreach
+from actions.prospector        import prospector
 
 
 def get_base_dir():
@@ -122,6 +205,108 @@ TOOL_DECLARATIONS = [
         }
     },
     {
+        "name": "play_video",
+        "description": (
+            "Plays a video INSIDE the HUD, right where the avatar is — a YouTube "
+            "link, a direct video URL, a local file path, or just a description to "
+            "search for (e.g. 'play the new Dune trailer'). It always starts muted; "
+            "the user can ask to unmute. Use this for any 'play X' request."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "source": {"type": "STRING", "description": "File path, video URL, or YouTube link (optional if query is given)"},
+                "query":  {"type": "STRING", "description": "What to search for and play (used when no source is given)"}
+            }
+        }
+    },
+    {
+        "name": "stop_video",
+        "description": "Stops the video playing in the HUD and returns to the avatar.",
+        "parameters": {"type": "OBJECT", "properties": {}}
+    },
+    {
+        "name": "gods_eye",
+        "description": (
+            "Opens 'God's Eye View' — a live 3D globe of real public data: aircraft, "
+            "ships, satellites, earthquakes, fires and public cameras. First run "
+            "installs it (needs Node.js); afterwards it opens fast. Use when the user "
+            "asks for god's eye, the globe, the world map, or live world tracking."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {"type": "STRING", "description": "open (default) or stop"}
+            }
+        }
+    },
+    {
+        "name": "outreach",
+        "description": (
+            "The user's business outreach assistant (ads / posters / websites). Manages "
+            "a prospect list, writes a PERSONALISED pitch for each business with the "
+            "LLM, and sends them ONE at a time with a daily cap and human-like delays. "
+            "Email first, then WhatsApp/Telegram/LinkedIn; Instagram only if the user "
+            "insists (it risks a ban). Always drafts and asks for approval before "
+            "sending. Actions: add, status, draft, queue, send, send_all, followup."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {"type": "STRING", "description": "add | status | draft | queue | send | send_all | followup"},
+                "prospects": {"type": "ARRAY", "items": {"type": "OBJECT"},
+                              "description": "For 'add': list of {business, contact, handle, email, channel, notes}"},
+                "business": {"type": "STRING"},
+                "contact":  {"type": "STRING"},
+                "handle":   {"type": "STRING"},
+                "email":    {"type": "STRING"},
+                "channel":  {"type": "STRING", "description": "email | whatsapp | telegram | instagram | linkedin"},
+                "notes":    {"type": "STRING", "description": "A specific detail about them, for personalisation"},
+                "count":    {"type": "INTEGER", "description": "For 'queue': how many to draft"},
+                "confirmed": {"type": "BOOLEAN", "description": "For 'send_all': the user explicitly approved"}
+            },
+            "required": ["action"]
+        }
+    },
+    {
+        "name": "prospector",
+        "description": (
+            "Finds local-business LEADS for outreach using the free OpenStreetMap "
+            "database. Give a niche and an area (e.g. 'cafes in Kochi', 'gyms in "
+            "Kozhikode'); it returns businesses there and auto-loads the ones with "
+            "NO website into your outreach list — those are prime prospects. Use "
+            "when the user wants to find businesses to pitch ads/posters/websites to."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "niche": {"type": "STRING", "description": "cafes | gyms | salons | restaurants | bakeries | clinics | …"},
+                "area":  {"type": "STRING", "description": "City / area, e.g. 'Kochi'"},
+                "radius_km": {"type": "NUMBER", "description": "Search radius in km (default 5)"},
+                "limit": {"type": "INTEGER", "description": "Max businesses to fetch (default 50)"},
+                "only_no_website": {"type": "BOOLEAN", "description": "Keep only businesses with no website (default true)"}
+            },
+            "required": ["niche", "area"]
+        }
+    },
+    {
+        "name": "deep_research",
+        "description": (
+            "Autonomous deep research on a topic: run multiple web-search passes "
+            "(breadth then gap-filling follow-ups), synthesize a comprehensive report, "
+            "and save it as a Markdown file on the Desktop. Use when the user wants "
+            "thorough, well-researched information (research X, deep dive on Y)."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "topic": {"type": "STRING", "description": "The subject to research"},
+                "max_rounds": {"type": "INTEGER", "description": "Max research passes (default 4)"}
+            },
+            "required": ["topic"]
+        }
+    },
+    {
         "name": "weather_report",
         "description": "Gives the weather report to user",
         "parameters": {
@@ -192,6 +377,25 @@ TOOL_DECLARATIONS = [
                 "text":  {"type": "STRING", "description": "The question or instruction about the captured image"}
             },
             "required": ["text"]
+        }
+    },
+    {
+        "name": "camera_vision",
+        "description": (
+            "Real-time webcam vision. action 'start' begins continuously watching the camera "
+            "(then 'what do you see' is answered against the live view); 'stop' ends it; "
+            "'look' answers a question about the current camera view immediately. "
+            "Use when the user wants JARVIS to SEE via the camera — 'start the camera', "
+            "'what am I holding', 'read this', 'watch the door', 'who is this'."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action":   {"type": "STRING", "description": "start | stop | look"},
+                "question": {"type": "STRING", "description": "For 'look': what to ask about the camera view"},
+                "narrate":  {"type": "STRING", "description": "For 'start': 'true' to describe the scene periodically"}
+            },
+            "required": ["action"]
         }
     },
     {
@@ -505,6 +709,59 @@ class JarvisLive:
         self.ui.on_text_command = self._on_text_command
 
     def _on_text_command(self, text: str):
+        t   = (text or "").strip()
+        low = t.lower()
+
+        # ---- serious mode toggle ----
+        if low in ("serious mode on", "go serious", "serious mode",
+                   "enable serious mode", "lock in", "mission mode"):
+            set_serious(True)
+            self.ui.write_log("SYS: Serious mode ON.")
+            self._inject_persona(SERIOUS_PERSONA)
+            self.speak("Serious mode engaged, sir.")
+            return
+        if low in ("serious mode off", "normal mode", "stand down",
+                   "casual mode", "disable serious mode"):
+            set_serious(False)
+            self.ui.write_log("SYS: Serious mode off.")
+            self._inject_persona("Return to your normal JARVIS persona: calm, sharp, professional.")
+            self.speak("Standing down to normal, sir.")
+            return
+
+        # ---- camera vision (real-time) ----
+        if low in ("start camera", "camera on", "open camera", "start watching",
+                   "keep an eye out", "eyes on", "camera up", "watch this"):
+            msg = start_camera_stream(speak=self.speak, player=self.ui, fps=2.0, narrate=False)
+            self.ui.write_log(f"SYS: {msg}")
+            self.speak(msg)
+            return
+        if low in ("start camera and describe", "narrate camera", "describe what you see",
+                   "camera on and narrate", "watch and describe", "keep describing"):
+            msg = start_camera_stream(speak=self.speak, player=self.ui, fps=2.0, narrate=True)
+            self.ui.write_log(f"SYS: {msg}")
+            self.speak(msg)
+            return
+        if low in ("stop camera", "camera off", "stop watching", "eyes off", "camera down"):
+            msg = stop_camera_stream()
+            self.ui.write_log(f"SYS: {msg}")
+            self.speak(msg)
+            return
+        if (low.startswith("what do you see") or low.startswith("what am i holding")
+                or low.startswith("what am i looking at") or low.startswith("what is this")
+                or low.startswith("what's this") or low.startswith("read this")
+                or low.startswith("read that") or low.startswith("look at this")
+                or low.startswith("describe this") or low.startswith("who is this")
+                or low in ("look", "what do you reckon", "describe the scene")):
+            msg = camera_look(question=text, player=self.ui)
+            self.ui.write_log(f"SYS: {msg}")   # the vision session speaks the answer
+            return
+
+        # ---- deep research trigger ("research X" / "deep research on X") ----
+        m = re.match(r"^(?:deep\s+)?research\s+(?:on\s+|about\s+)?(.+)$", t, re.IGNORECASE)
+        if m and len(m.group(1).strip()) > 2:
+            self._start_deep_research(m.group(1).strip())
+            return
+
         if not self._loop or not self.session:
             return
         asyncio.run_coroutine_threadsafe(
@@ -514,6 +771,39 @@ class JarvisLive:
             ),
             self._loop
         )
+
+    def _inject_persona(self, instruction: str):
+        """Push an in-session persona update without reconnecting."""
+        if not self._loop or not self.session:
+            return
+        asyncio.run_coroutine_threadsafe(
+            self.session.send_client_content(
+                turns={"parts": [{"text": instruction}]},
+                turn_complete=True
+            ),
+            self._loop
+        )
+
+    def _start_deep_research(self, topic: str):
+        self.ui.write_log(f"SYS: Deep research initiated — {topic}")
+        self.ui.set_state("THINKING")
+
+        def _run():
+            try:
+                from actions.research import deep_research
+                msg = deep_research(
+                    topic, speak=self.speak,
+                    progress=lambda s: self.ui.write_log(f"SYS: {s}")
+                )
+                self.ui.write_log(f"Jarvis: {msg}")
+            except Exception as e:
+                self.ui.write_log(f"ERR: deep_research — {e}")
+                self.speak(f"Research hit a problem, sir. {e}")
+            finally:
+                if not self.ui.muted:
+                    self.ui.set_state("LISTENING")
+
+        threading.Thread(target=_run, daemon=True).start()
 
     def set_speaking(self, value: bool):
         with self._speaking_lock:
@@ -544,7 +834,7 @@ class JarvisLive:
 
         memory     = load_memory()
         mem_str    = format_memory_for_prompt(memory)
-        sys_prompt = _load_system_prompt()
+        sys_prompt = compose_persona(_load_system_prompt(), is_serious())
 
         now      = datetime.now()
         time_str = now.strftime("%A, %B %d, %Y — %I:%M %p")
@@ -645,6 +935,18 @@ class JarvisLive:
                 ).start()
                 result = "Vision module activated. Stay completely silent — vision module will speak directly."
 
+            elif name == "camera_vision":
+                act = (args.get("action") or "").lower().strip()
+                if act == "start":
+                    narrate = str(args.get("narrate", "")).lower() in ("true", "1", "yes")
+                    result = start_camera_stream(speak=self.speak, player=self.ui, fps=2.0, narrate=narrate)
+                elif act == "stop":
+                    result = stop_camera_stream()
+                elif act == "look":
+                    result = camera_look(args.get("question") or "What do you see right now?", player=self.ui)
+                else:
+                    result = f"Unknown camera action: '{act}'. Use start, stop, or look."
+
             elif name == "computer_settings":
                 r = await loop.run_in_executor(None, lambda: computer_settings(parameters=args, response=None, player=self.ui))
                 result = r or "Done."
@@ -683,6 +985,32 @@ class JarvisLive:
             elif name == "flight_finder":
                 r = await loop.run_in_executor(None, lambda: flight_finder(parameters=args, player=self.ui))
                 result = r or "Done."
+
+            elif name == "deep_research":
+                from actions.research import deep_research_tool
+                r = await loop.run_in_executor(None, lambda: deep_research_tool(args, speak=self.speak, player=self.ui))
+                result = r or "Research complete."
+
+            elif name == "play_video":
+                r = await loop.run_in_executor(None, lambda: play_video(parameters=args, player=self.ui, speak=self.speak))
+                result = r or "Playing."
+
+            elif name == "stop_video":
+                r = await loop.run_in_executor(None, lambda: stop_video(parameters=args, player=self.ui, speak=self.speak))
+                result = r or "Stopped."
+
+            elif name == "gods_eye":
+                r = await loop.run_in_executor(None, lambda: gods_eye(parameters=args, player=self.ui, speak=self.speak))
+                result = r or "God's Eye launching."
+
+            elif name == "outreach":
+                r = await loop.run_in_executor(None, lambda: outreach(parameters=args, player=self.ui, speak=self.speak))
+                result = r or "Outreach done."
+
+            elif name == "prospector":
+                r = await loop.run_in_executor(None, lambda: prospector(parameters=args, player=self.ui, speak=self.speak))
+                result = r or "Prospecting done."
+
             elif name == "shutdown_jarvis":
                 self.ui.write_log("SYS: Shutdown requested.")
                 self.speak("Goodbye, sir.")

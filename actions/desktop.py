@@ -161,7 +161,18 @@ def set_wallpaper(image_path: str) -> str:
             desktop_env = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
             uri = f"file://{path}"
 
-            if "gnome" in desktop_env or "unity" in desktop_env:
+            if "cinnamon" in desktop_env:
+                # Linux Mint (Cinnamon)
+                subprocess.run([
+                    "gsettings", "set", "org.cinnamon.desktop.background",
+                    "picture-uri", uri
+                ], capture_output=True)
+                subprocess.run([
+                    "gsettings", "set", "org.cinnamon.desktop.background",
+                    "picture-options", "zoom"
+                ], capture_output=True)
+
+            elif "gnome" in desktop_env or "unity" in desktop_env:
                 subprocess.run([
                     "gsettings", "set", "org.gnome.desktop.background",
                     "picture-uri", uri
@@ -201,9 +212,15 @@ for (var i = 0; i < allDesktops.length; i++) {{
                     capture_output=True
                 )
                 if result.returncode != 0:
+                    result = subprocess.run(
+                        ["nitrogen", "--set-zoom-fill", str(path)],
+                        capture_output=True
+                    )
+                if result.returncode != 0:
                     return (
-                        f"Could not set wallpaper automatically on {desktop_env}. "
-                        f"Try manually or install 'feh'."
+                        f"Could not set wallpaper automatically on "
+                        f"'{desktop_env or 'unknown desktop'}'. "
+                        f"Install 'feh' or 'nitrogen', or set it manually."
                     )
 
             return f"Wallpaper set: {path.name}"
@@ -251,9 +268,22 @@ def get_current_wallpaper() -> str:
 
         else:
             desktop_env = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
+            if "cinnamon" in desktop_env:
+                result = subprocess.run(
+                    ["gsettings", "get", "org.cinnamon.desktop.background", "picture-uri"],
+                    capture_output=True, text=True
+                )
+                return f"Current wallpaper: {result.stdout.strip()}"
             if "gnome" in desktop_env or "unity" in desktop_env:
                 result = subprocess.run(
                     ["gsettings", "get", "org.gnome.desktop.background", "picture-uri"],
+                    capture_output=True, text=True
+                )
+                return f"Current wallpaper: {result.stdout.strip()}"
+            if "xfce" in desktop_env:
+                result = subprocess.run(
+                    ["xfconf-query", "-c", "xfce4-desktop",
+                     "-p", "/backdrop/screen0/monitor0/workspace0/last-image"],
                     capture_output=True, text=True
                 )
                 return f"Current wallpaper: {result.stdout.strip()}"

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tablets (sw600dp+): keep the column a readable, centered width instead of
+         stretching edge-to-edge. Layout already scrolls, so it never cuts off. -->
+    <dimen name="column_max_width">640dp</dimen>
+</resources>

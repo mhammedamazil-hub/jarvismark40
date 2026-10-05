@@ -1,0 +1,130 @@
+package com.jarvis.mobile
+
+import android.content.Context
+import android.content.Intent
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
+import java.util.Locale
+
+/**
+ * JARVIS's voice — the plugin that makes it TALK.
+ *
+ *  • Text-to-speech: the agent speaks confirmations, results, and live answers. Utterances
+ *    that arrive before the engine finishes initializing are queued and flushed, so the
+ *    first line is never dropped.
+ *  • Speech-to-text: push-to-talk so you can give a goal hands-free.
+ *
+ * Uses the platform SpeechRecognizer + TextToSpeech — no extra deps, and TTS works offline
+ * on virtually every device.
+ */
+class VoicePlugin(private val appCtx: Context) : JarvisPlugin {
+    override val id = "voice"
+    override val displayName = "Voice (talk + listen)"
+
+    private var tts: TextToSpeech? = null
+    private var ttsReady = false
+    private var recognizer: SpeechRecognizer? = null
+    @Volatile private var listening = false
+
+    /** Utterances waiting for the TTS engine to finish initializing. */
+    private val pending = ArrayDeque<String>()
+    private var utteranceId = 0
+
+    /** Master switch for spoken replies (bound to the UI toggle). */
+    @Volatile var repliesEnabled: Boolean = true
+
+    override fun onInit(ctx: Context) {
+        if (tts != null) return                 // already initialized (e.g. Activity recreated)
+        tts = TextToSpeech(appCtx) { status ->
+            ttsReady = status == TextToSpeech.SUCCESS
+            if (ttsReady) {
+                tts?.language = Locale.getDefault()
+                flushPending()
+            }
+        }
+    }
+
+    /** Say something out loud. Safe from any thread; queues until the engine is ready. */
+    fun speak(text: String) {
+        if (!repliesEnabled || text.isBlank()) return
+        synchronized(pending) {
+            if (!ttsReady) { pending.addLast(text); return }
+        }
+        speakNow(text)
+    }
+
+    private fun speakNow(text: String) {
+        // TextToSpeech caps input length, so speak in chunks queued back-to-back.
+        text.chunked(3200).forEach { chunk ->
+            tts?.speak(chunk, TextToSpeech.QUEUE_ADD, null, "jv${utteranceId++}")
+        }
+    }
+
+    private fun flushPending() {
+        val queued = synchronized(pending) { val l = pending.toList(); pending.clear(); l }
+        queued.forEach { speakNow(it) }
+    }
+
+    /**
+     * Push-to-talk. Callbacks arrive on the main thread. [onResult] gets the transcript,
+     * [onError] gets a short reason. Requires RECORD_AUDIO (requested by the UI).
+     */
+    fun listen(onResult: (String) -> Unit, onError: (String) -> Unit = {}) {
+        if (!SpeechRecognizer.isRecognitionAvailable(appCtx)) { onError("Speech recognition not available"); return }
+        if (listening) return
+        listening = true
+        runCatching { recognizer?.destroy() }   // release any previous listener
+        val sr = SpeechRecognizer.createSpeechRecognizer(appCtx)
+        recognizer = sr
+        sr.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() { listening = false }
+            override fun onError(error: Int) { listening = false; onError("Speech error $error") }
+            override fun onResults(results: Bundle?) {
+                listening = false
+                val said = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull().orEmpty()
+                if (said.isNotBlank()) onResult(said) else onError("Didn't catch that")
+            }
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+        }
+        val started = runCatching { sr.startListening(intent) }.isSuccess
+        if (!started) { listening = false; onError("Microphone unavailable (grant the permission)") }
+    }
+
+    fun stopListening() { runCatching { recognizer?.stopListening() }; listening = false }
+
+    override fun tools() = listOf(
+        PluginTool("speak", "Say something out loud to the user"),
+        PluginTool("listen", "Capture a spoken goal from the user")
+    )
+
+    override fun onCommand(command: String): Boolean {
+        val c = command.trim().lowercase()
+        return when {
+            c.startsWith("say ") -> { speak(command.trim().removePrefix("say ")); true }
+            else -> false
+        }
+    }
+
+    override fun statusLine(): String? = if (ttsReady) "🎙 Voice ready" else null
+
+    override fun onDestroy() {
+        runCatching { tts?.stop(); tts?.shutdown() }
+        runCatching { recognizer?.destroy() }
+        tts = null; recognizer = null; ttsReady = false
+        synchronized(pending) { pending.clear() }
+    }
+}

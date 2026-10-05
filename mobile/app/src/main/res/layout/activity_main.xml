@@ -1,0 +1,327 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#00090E">
+
+    <!-- Animated arc-reactor HUD behind everything -->
+    <com.jarvis.mobile.HudView
+        android:id="@+id/hud"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Translucent scrim so the glowing HUD shows through but text stays readable -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#B800040C"
+        android:padding="16dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:maxWidth="@dimen/column_max_width"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:shadowColor="#00E5FF"
+                android:shadowRadius="12"
+                android:text="J.A.R.V.I.S"
+                android:textColor="#9FF6FF"
+                android:textSize="30sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.25" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="Mobile Agent · sees · listens · acts"
+                android:textColor="#5FD8E6"
+                android:textSize="12sp"
+                android:letterSpacing="0.1" />
+
+            <TextView
+                android:id="@+id/txtStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="Plugins: —"
+                android:textColor="#39D6C4"
+                android:textSize="11sp"
+                android:fontFamily="monospace" />
+
+            <Button
+                android:id="@+id/btnAccessibility"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/btn_neon"
+                android:text="1 · Enable JARVIS Controller"
+                android:textColor="#9FF6FF" />
+
+            <TextView
+                android:id="@+id/txtAccessibilityState"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Status: checking…"
+                android:textColor="#FFB300" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Brain — provider / key / model"
+                android:textColor="#5FD8E6"
+                android:textSize="12sp"
+                android:letterSpacing="0.08" />
+
+            <Spinner
+                android:id="@+id/spinnerProvider"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:background="#0A0A16" />
+
+            <EditText
+                android:id="@+id/edtKey"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:hint="API key"
+                android:inputType="textPassword"
+                android:textColor="#E0F7FA"
+                android:textColorHint="#4E6A70" />
+
+            <EditText
+                android:id="@+id/edtModel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:hint="Vision model"
+                android:textColor="#E0F7FA"
+                android:textColorHint="#4E6A70" />
+
+            <Switch
+                android:id="@+id/switchConfirm"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:checked="true"
+                android:text="🔒 Confirm before sending / posting"
+                android:textColor="#E0F7FA" />
+
+            <Switch
+                android:id="@+id/switchVoice"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:checked="true"
+                android:text="🔊 JARVIS speaks its replies"
+                android:textColor="#E0F7FA" />
+
+            <Switch
+                android:id="@+id/switchSpeakSteps"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="🗣 Narrate every step (verbose)"
+                android:textColor="#E0F7FA" />
+
+            <Button
+                android:id="@+id/btnPersona"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/btn_neon"
+                android:text="🧠 Customize JARVIS (persona .md)"
+                android:textColor="#9FF6FF" />
+
+            <Button
+                android:id="@+id/btnUpdate"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/btn_neon"
+                android:text="🔄 Check for updates"
+                android:textColor="#9FF6FF" />
+
+            <Button
+                android:id="@+id/btnBubble"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/btn_neon"
+                android:text="◉ Show floating bubble"
+                android:textColor="#9FF6FF" />
+
+            <EditText
+                android:id="@+id/edtGoal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:gravity="top"
+                android:hint="Goal — e.g. Open WhatsApp, message Ravi 'on my way'"
+                android:minLines="2"
+                android:textColor="#E0F7FA"
+                android:textColorHint="#4E6A70" />
+
+            <Button
+                android:id="@+id/btnVoice"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/btn_neon"
+                android:text="🎙 Speak goal"
+                android:textColor="#9FF6FF" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="⚡ Live assistant"
+                android:textColor="#00E5FF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.08" />
+
+            <Button
+                android:id="@+id/btnAsk"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/btn_neon"
+                android:text="⚡ Ask JARVIS (mic)"
+                android:textColor="#9FF6FF" />
+
+            <Button
+                android:id="@+id/btnLook"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/btn_neon"
+                android:text="📷 Look at camera"
+                android:textColor="#9FF6FF" />
+
+            <Switch
+                android:id="@+id/switchBackCam"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="📷 Use back camera (off = selfie)"
+                android:textColor="#E0F7FA" />
+
+            <Switch
+                android:id="@+id/switchWake"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="🎧 Wake word — 'Yo JARVIS…' (uses battery)"
+                android:textColor="#E0F7FA" />
+
+            <Button
+                android:id="@+id/btnStart"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/btn_neon"
+                android:text="2 · Start JARVIS"
+                android:textColor="#9FF6FF" />
+
+            <Button
+                android:id="@+id/btnStop"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/btn_neon"
+                android:text="Stop"
+                android:textColor="#9FF6FF" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="⛔ Focus — block apps"
+                android:textColor="#00E5FF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.08" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="Name distracting apps; JARVIS bounces you out automatically for the set time. Or just say &quot;Yo JARVIS, block youtube for 5 minutes&quot;."
+                android:textColor="#9FB3B8"
+                android:textSize="12sp" />
+
+            <EditText
+                android:id="@+id/edtBlockApps"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:hint="Apps to block — YouTube, Instagram"
+                android:textColor="#E0F7FA"
+                android:textColorHint="#4E6A70" />
+
+            <EditText
+                android:id="@+id/edtBlockMins"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:hint="Minutes (e.g. 5)"
+                android:inputType="number"
+                android:textColor="#E0F7FA"
+                android:textColorHint="#4E6A70" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnFocusStart"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:background="@drawable/btn_neon"
+                    android:text="Start focus"
+                    android:textColor="#9FF6FF" />
+
+                <Button
+                    android:id="@+id/btnFocusStop"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:background="@drawable/btn_neon"
+                    android:text="Stop focus"
+                    android:textColor="#9FF6FF" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Activity log"
+                android:textColor="#00E5FF"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/txtLog"
+                android:layout_width="match_parent"
+                android:layout_height="360dp"
+                android:layout_marginTop="4dp"
+                android:background="#0A0A16"
+                android:fontFamily="monospace"
+                android:padding="8dp"
+                android:scrollbars="vertical"
+                android:textColor="#9FE8F0"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </ScrollView>
+</FrameLayout>
