@@ -111,7 +111,7 @@ object ModelClient {
         } else {
             val parts = JSONArray().apply {
                 put(JSONObject().put("type", "text").put("text", userText))
-                for (b64 in images) parts.put(JSONObject().put("type", "image_url").put(
+                for (b64 in images) put(JSONObject().put("type", "image_url").put(
                     "image_url", JSONObject().put("url", "data:image/jpeg;base64,$b64")))
             }
             body = JSONObject().apply {
